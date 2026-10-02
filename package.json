@@ -1,0 +1,5 @@
+{
+  "name":"hnai-kaipoke-bridge-server","version":"0.3.0","type":"module","private":true,
+  "scripts":{"start":"node server.js","setup":"npx playwright install chromium"},
+  "dependencies":{"express":"^5.1.0","playwright":"^1.55.0"}
+}
