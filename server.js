@@ -219,34 +219,47 @@ async function autoLogin(p) {
   /*
    * ログインボタン
    */
+/*
+ * カイポケのログインボタンを検出
+ * button / submit / image / リンク形式に対応
+ */
 
-  const loginButton =
-    p.getByText(
-      'ログイン',
-      { exact: true }
-    ).last();
+let loginClicked = false;
 
+const loginSelectors = [
+  'button:has-text("ログイン")',
+  'input[type="submit"]',
+  'input[type="image"]',
+  'input[value*="ログイン"]',
+  'a:has-text("ログイン")'
+];
 
-  if (await loginButton.count()) {
+for (const selector of loginSelectors) {
 
-    await loginButton.click();
+  const candidate =
+    p.locator(selector).first();
 
-  } else {
+  if (
+    await candidate.count() &&
+    await candidate
+      .isVisible()
+      .catch(() => false)
+  ) {
 
-    const submit =
-      p.locator(
-        'input[type="submit"]'
-      ).first();
+    await candidate.click();
 
-    if (!(await submit.count())) {
+    loginClicked = true;
 
-      throw new Error(
-        'カイポケのログインボタンを検出できませんでした。'
-      );
-    }
-
-    await submit.click();
+    break;
   }
+}
+
+if (!loginClicked) {
+
+  throw new Error(
+    'カイポケのログインボタンを検出できませんでした。'
+  );
+}
 
 
   await p
