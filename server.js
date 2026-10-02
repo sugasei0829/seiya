@@ -1033,36 +1033,89 @@ app.post(
   '/connect',
   async (req, res) => {
 
+    let p = null;
+
     try {
 
-      const p =
-        await getPage();
+      console.log('=== CONNECT START ===');
 
+      p = await page();
+
+      console.log(
+        'BEFORE LOGIN URL:',
+        p.url()
+      );
 
       await autoLogin(p);
 
+      console.log(
+        'AFTER LOGIN URL:',
+        p.url()
+      );
+
+      console.log(
+        'AFTER LOGIN TITLE:',
+        await p.title().catch(() => '')
+      );
+
+      console.log('=== CONNECT SUCCESS ===');
 
       res.json({
-
-        ok:
-          true,
-
-        loggedIn:
-          true,
-
+        ok: true,
+        loggedIn: true,
         message:
           'カイポケへ接続しました。'
       });
 
+    } catch (e) {
 
-    } catch (error) {
+      let currentUrl = '';
+      let currentTitle = '';
+
+      if (p) {
+
+        currentUrl =
+          p.url();
+
+        currentTitle =
+          await p
+            .title()
+            .catch(() => '');
+      }
+
+      console.error(
+        '=== CONNECT ERROR ==='
+      );
+
+      console.error(
+        'URL:',
+        currentUrl
+      );
+
+      console.error(
+        'TITLE:',
+        currentTitle
+      );
+
+      console.error(
+        'ERROR:',
+        e?.message || e
+      );
+
+      console.error(
+        '====================='
+      );
 
       res
         .status(500)
         .json({
           error:
-            error.message ||
-            'カイポケへの接続に失敗しました。'
+            e?.message ||
+            'カイポケ接続に失敗しました。',
+          diagnostic: {
+            url: currentUrl,
+            title: currentTitle
+          }
         });
     }
   }
