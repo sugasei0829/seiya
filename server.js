@@ -806,16 +806,21 @@ async function openExportPage(p) {
   }
 
 
-  /*
-   * 念のためログイン状態を確認
-   */
-  if (isLoginPage(p.url())) {
-    console.log('Login page detected. Logging in...');
+/*
+ * 念のためログイン状態を確認
+ */
+if (!(await isLoggedIn(p))) {
 
-    await autoLogin(p);
+  console.log(
+    'Not logged in. Logging in...'
+  );
 
-    await p.waitForTimeout(1000);
-  }
+  await autoLogin(p);
+
+  await p.waitForTimeout(
+    1000
+  );
+}
 
 
   /*
