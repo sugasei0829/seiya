@@ -786,129 +786,123 @@ async function setExportDates(
    Open 看護記録書Ⅱ export page
 ========================================================= */
 
-async function openExportPage(
-  p
-) {
+/* =========================================================
+   Open 看護記録書Ⅱ export page
+========================================================= */
 
-  console.log(
-    'Opening export page...'
-  );
+async function openExportPage(p) {
+
+  console.log('=== OPEN EXPORT PAGE START ===');
+  console.log('START URL:', p.url());
+
+  /*
+   * すでに看護記録書Ⅱの出力画面なら終了
+   */
+  if (
+    /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
+  ) {
+    console.log('Already on 看護記録書Ⅱ export page');
+    return;
+  }
 
 
   /*
-   * 固定URLが設定されている場合
+   * 念のためログイン状態を確認
+   */
+  if (isLoginPage(p.url())) {
+    console.log('Login page detected. Logging in...');
+
+    await autoLogin(p);
+
+    await p.waitForTimeout(1000);
+  }
+
+
+  /*
+   * EXPORT_URL が設定されている場合
+   *
+   * ※ conversationContext や内部ID入りのURLを
+   *   Railwayへ固定設定することは推奨しません。
    */
   if (EXPORT_URL) {
+
+    console.log('Using KAIPOKE_EXPORT_URL');
 
     await p.goto(
       EXPORT_URL,
       {
-        waitUntil:
-          'domcontentloaded',
-
-        timeout:
-          60000
+        waitUntil: 'domcontentloaded',
+        timeout: 60000
       }
     );
 
+    await p.waitForTimeout(1000);
 
-    await p.waitForTimeout(
-      1000
-    );
+    console.log('AFTER EXPORT_URL:', p.url());
 
-
-    console.log(
-      'EXPORT URL:',
-      p.url()
-    );
-
-
-    return;
+    if (
+      /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
+    ) {
+      console.log('=== OPEN EXPORT PAGE SUCCESS ===');
+      return;
+    }
   }
 
 
   /*
-   * すでに対象画面なら終了
+   * 上部メニュー「各種情報出力」を探す
    */
-  const currentText =
-    await getBodyText(p);
+  console.log('Searching 各種情報出力 menu...');
+
+  const infoMenu =
+    p.getByText(
+      '各種情報出力',
+      {
+        exact: false
+      }
+    ).first();
 
 
   if (
-    /careRecordDocument2Export/i
-      .test(p.url()) ||
-
-    currentText.includes(
-      '看護記録書Ⅱ'
-    )
+    await infoMenu.count() &&
+    await infoMenu
+      .isVisible()
+      .catch(() => false)
   ) {
 
-    console.log(
-      'Already on export page'
-    );
+    console.log('各種情報出力 menu found');
 
-    return;
+    await infoMenu.click()
+      .catch(() => {});
+
+    await p.waitForTimeout(700);
   }
 
 
   /*
-   * メニュー探索
+   * 「出力対象選択」を探す
    */
-  const menuLabels = [
-    '訪問看護',
-    '各種帳票',
-    '看護記録書Ⅱ'
-  ];
+  console.log('Searching 出力対象選択...');
+
+  const targetMenu =
+    p.getByText(
+      '出力対象選択',
+      {
+        exact: false
+      }
+    ).first();
 
 
-  for (
-    const label
-    of menuLabels
+  if (
+    await targetMenu.count() &&
+    await targetMenu
+      .isVisible()
+      .catch(() => false)
   ) {
 
-    console.log(
-      'Searching menu:',
-      label
-    );
+    console.log('Clicking 出力対象選択');
 
-
-    const element =
-      p.getByText(
-        label,
-        {
-          exact: false
-        }
-      ).first();
-
-
-    const count =
-      await element.count();
-
-
-    if (count < 1) {
-      continue;
-    }
-
-
-    const visible =
-      await element
-        .isVisible()
-        .catch(() => false);
-
-
-    if (!visible) {
-      continue;
-    }
-
-
-    console.log(
-      'Clicking menu:',
-      label
-    );
-
-
-    await element.click();
-
+    await targetMenu.click();
 
     await p
       .waitForLoadState(
@@ -919,47 +913,93 @@ async function openExportPage(
       )
       .catch(() => {});
 
-
-    await p.waitForTimeout(
-      700
-    );
+    await p.waitForTimeout(1000);
   }
 
 
-  const finalText =
-    await getBodyText(p);
+  /*
+   * ここですでに対象画面へ来ている可能性
+   */
+  if (
+    /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
+  ) {
+    console.log('=== OPEN EXPORT PAGE SUCCESS ===');
+    return;
+  }
+
+
+  /*
+   * 「看護記録書Ⅱ」を探す
+   */
+  console.log('Searching 看護記録書Ⅱ...');
+
+  const record2 =
+    p.getByText(
+      '看護記録書Ⅱ',
+      {
+        exact: false
+      }
+    ).first();
 
 
   if (
-    !/careRecordDocument2Export/i
-      .test(p.url()) &&
-
-    !finalText.includes(
-      '看護記録書Ⅱ'
-    )
+    await record2.count() &&
+    await record2
+      .isVisible()
+      .catch(() => false)
   ) {
 
-    console.error(
-      'CURRENT URL:',
-      p.url()
-    );
+    console.log('Clicking 看護記録書Ⅱ');
 
-    console.error(
-      'CURRENT TITLE:',
-      await getSafeTitle(p)
-    );
+    await record2.click();
 
+    await p
+      .waitForLoadState(
+        'domcontentloaded',
+        {
+          timeout: 30000
+        }
+      )
+      .catch(() => {});
 
-    throw new Error(
-      '看護記録書Ⅱの出力画面へ移動できませんでした。'
-    );
+    await p.waitForTimeout(1000);
   }
 
 
+  /*
+   * 最終確認
+   */
+  const finalURL = p.url();
+  const finalText = await getBodyText(p);
+
+  console.log('FINAL URL:', finalURL);
   console.log(
-    'Export page opened'
+    'FINAL TITLE:',
+    await getSafeTitle(p)
+  );
+
+
+  if (
+    /\/bizhnc\/careRecordDocument2Export/i.test(finalURL) ||
+    (
+      finalText.includes('看護記録書Ⅱ') &&
+      finalText.includes('出力条件')
+    )
+  ) {
+
+    console.log('=== OPEN EXPORT PAGE SUCCESS ===');
+    return;
+  }
+
+
+  console.error('=== OPEN EXPORT PAGE FAILED ===');
+
+  throw new Error(
+    '看護記録書Ⅱの出力画面へ自動移動できませんでした。'
   );
 }
+
+
 
 
 /* =========================================================
