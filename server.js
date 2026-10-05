@@ -757,6 +757,43 @@ async function openOutputSelectionPage(p) {
     )
   );
 
+   console.log(
+  'FRAME COUNT:',
+  p.frames().length
+);
+
+for (
+  let i = 0;
+  i < p.frames().length;
+  i++
+) {
+
+  const frame =
+    p.frames()[i];
+
+  console.log(
+    `FRAME ${i} URL:`,
+    frame.url()
+  );
+
+  const frameText =
+    await frame
+      .locator('body')
+      .innerText()
+      .catch(() => '');
+
+  console.log(
+    `FRAME ${i} HAS RECORD2:`,
+    frameText.includes('看護記録書Ⅱ')
+  );
+
+  console.log(
+    `FRAME ${i} TEXT PREVIEW:`,
+    frameText
+      .replace(/\s+/g, ' ')
+      .slice(0, 1000)
+  );
+}
 
   /*
    * ページ内リンクをデバッグ表示
