@@ -795,6 +795,25 @@ async function openExportPage(p) {
   console.log('=== OPEN EXPORT PAGE START ===');
   console.log('START URL:', p.url());
 
+   const links = await p
+  .locator('a')
+  .evaluateAll((elements) =>
+    elements.map((a) => ({
+      text: (a.innerText || '').trim(),
+      href: a.href || ''
+    }))
+    .filter((x) =>
+      x.text.includes('各種情報出力') ||
+      x.text.includes('看護記録') ||
+      x.href.includes('careRecord') ||
+      x.href.includes('bizhnc')
+    )
+  );
+
+console.log(
+  'EXPORT RELATED LINKS:',
+  JSON.stringify(links, null, 2)
+);
   /*
    * すでに看護記録書Ⅱの出力画面なら終了
    */
