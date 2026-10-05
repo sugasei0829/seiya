@@ -785,7 +785,6 @@ async function setExportDates(
 /* =========================================================
    Open 看護記録書Ⅱ export page
 ========================================================= */
-
 /* =========================================================
    Open 看護記録書Ⅱ export page
 ========================================================= */
@@ -795,9 +794,7 @@ async function openExportPage(p) {
   console.log('=== OPEN EXPORT PAGE START ===');
   console.log('START URL:', p.url());
 
-  /*
-   * すでに目的画面なら終了
-   */
+  // すでに目的画面なら終了
   if (
     /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
   ) {
@@ -805,138 +802,20 @@ async function openExportPage(p) {
     return;
   }
 
-
   /*
-   * カイポケのログイン済みセッションを利用して
-   * 看護記録書Ⅱの出力画面へ直接アクセス
-   *
-   * memberLoginId / basesInternalId /
-   * onesCompanyInternalId 等は固定しない
+   * ログイン状態を確認
    */
-  const directUrl =
-    'https://r.kaipoke.biz/bizhnc/careRecordDocument2Export/';
+  if (!(await isLoggedIn(p))) {
 
-  console.log(
-    'Opening direct export URL:',
-    directUrl
-  );
+    console.log('Not logged in. Logging in...');
 
+    await autoLogin(p);
 
-  await p.goto(
-    directUrl,
-    {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000
-    }
-  );
-
-
-  await p.waitForTimeout(2000);
-
-
-  console.log(
-    'AFTER DIRECT URL:',
-    p.url()
-  );
-
-  console.log(
-    'AFTER DIRECT TITLE:',
-    await getSafeTitle(p)
-  );
-
-
-  const body =
-    await getBodyText(p);
-
-
-  /*
-   * 成功判定
-   */
-  if (
-    /\/bizhnc\/careRecordDocument2Export/i.test(p.url()) &&
-    body.includes('看護記録書Ⅱ')
-  ) {
-
-    console.log(
-      '=== OPEN EXPORT PAGE SUCCESS ==='
-    );
-
-    return;
+    await p.waitForTimeout(1000);
   }
 
-
   /*
-   * ログイン画面へ戻された場合
-   */
-  if (
-    body.includes('法人ID') &&
-    body.includes('ユーザーID') &&
-    body.includes('パスワード')
-  ) {
-
-    throw new Error(
-      '看護記録書Ⅱへ移動した際にログイン画面へ戻されました。'
-    );
-  }
-
-
-  console.error(
-    'DIRECT EXPORT ACCESS FAILED'
-  );
-
-  console.error(
-    'CURRENT URL:',
-    p.url()
-  );
-
-  console.error(
-    'CURRENT TITLE:',
-    await getSafeTitle(p)
-  );
-
-
-  throw new Error(
-    '看護記録書Ⅱの出力画面を直接開けませんでした。'
-  );
-}
-
-console.log(
-  'EXPORT RELATED LINKS:',
-  JSON.stringify(links, null, 2)
-);
-  /*
-   * すでに看護記録書Ⅱの出力画面なら終了
-   */
-  if (
-    /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
-  ) {
-    console.log('Already on 看護記録書Ⅱ export page');
-    return;
-  }
-
-
-/*
- * 念のためログイン状態を確認
- */
-if (!(await isLoggedIn(p))) {
-
-  console.log(
-    'Not logged in. Logging in...'
-  );
-
-  await autoLogin(p);
-
-  await p.waitForTimeout(
-    1000
-  );
-}
-
-
-  /*
-   * EXPORT_URL が設定されている場合
-   *
-   * ※ conversationContext や内部ID入りのURLを
-   *   Railwayへ固定設定することは推奨しません。
+   * まず環境変数のURLを使用
    */
   if (EXPORT_URL) {
 
@@ -950,169 +829,117 @@ if (!(await isLoggedIn(p))) {
       }
     );
 
-    await p.waitForTimeout(1000);
+    await p.waitForTimeout(1500);
 
-    console.log('AFTER EXPORT_URL:', p.url());
+    console.log(
+      'AFTER EXPORT_URL:',
+      p.url()
+    );
+
+    const body =
+      await getBodyText(p);
 
     if (
-      /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
+      /\/bizhnc\/careRecordDocument2Export/i.test(p.url()) &&
+      body.includes('看護記録書Ⅱ')
     ) {
-      console.log('=== OPEN EXPORT PAGE SUCCESS ===');
+
+      console.log(
+        '=== OPEN EXPORT PAGE SUCCESS ==='
+      );
+
       return;
     }
   }
 
-
   /*
-   * 上部メニュー「各種情報出力」を探す
+   * ログイン済みセッションから
+   * 看護記録書ⅡのURLへ直接アクセス
    */
-  console.log('Searching 各種情報出力 menu...');
+  const directUrl =
+    'https://r.kaipoke.biz/bizhnc/careRecordDocument2Export/';
 
-  const infoMenu =
-    p.getByText(
-      '各種情報出力',
-      {
-        exact: false
-      }
-    ).first();
-
-
-  if (
-    await infoMenu.count() &&
-    await infoMenu
-      .isVisible()
-      .catch(() => false)
-  ) {
-
-    console.log('各種情報出力 menu found');
-
-    await infoMenu.click()
-      .catch(() => {});
-
-    await p.waitForTimeout(700);
-  }
-
-
-  /*
-   * 「出力対象選択」を探す
-   */
-  console.log('Searching 出力対象選択...');
-
-  const targetMenu =
-    p.getByText(
-      '出力対象選択',
-      {
-        exact: false
-      }
-    ).first();
-
-
-  if (
-    await targetMenu.count() &&
-    await targetMenu
-      .isVisible()
-      .catch(() => false)
-  ) {
-
-    console.log('Clicking 出力対象選択');
-
-    await targetMenu.click();
-
-    await p
-      .waitForLoadState(
-        'domcontentloaded',
-        {
-          timeout: 30000
-        }
-      )
-      .catch(() => {});
-
-    await p.waitForTimeout(1000);
-  }
-
-
-  /*
-   * ここですでに対象画面へ来ている可能性
-   */
-  if (
-    /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
-  ) {
-    console.log('=== OPEN EXPORT PAGE SUCCESS ===');
-    return;
-  }
-
-
-  /*
-   * 「看護記録書Ⅱ」を探す
-   */
-  console.log('Searching 看護記録書Ⅱ...');
-
-  const record2 =
-    p.getByText(
-      '看護記録書Ⅱ',
-      {
-        exact: false
-      }
-    ).first();
-
-
-  if (
-    await record2.count() &&
-    await record2
-      .isVisible()
-      .catch(() => false)
-  ) {
-
-    console.log('Clicking 看護記録書Ⅱ');
-
-    await record2.click();
-
-    await p
-      .waitForLoadState(
-        'domcontentloaded',
-        {
-          timeout: 30000
-        }
-      )
-      .catch(() => {});
-
-    await p.waitForTimeout(1000);
-  }
-
-
-  /*
-   * 最終確認
-   */
-  const finalURL = p.url();
-  const finalText = await getBodyText(p);
-
-  console.log('FINAL URL:', finalURL);
   console.log(
-    'FINAL TITLE:',
-    await getSafeTitle(p)
+    'Opening direct export URL:',
+    directUrl
   );
 
+  await p.goto(
+    directUrl,
+    {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
+    }
+  );
 
+  await p.waitForTimeout(2000);
+
+  const currentUrl =
+    p.url();
+
+  const currentTitle =
+    await getSafeTitle(p);
+
+  const body =
+    await getBodyText(p);
+
+  console.log(
+    'AFTER DIRECT URL:',
+    currentUrl
+  );
+
+  console.log(
+    'AFTER DIRECT TITLE:',
+    currentTitle
+  );
+
+  /*
+   * 成功
+   */
   if (
-    /\/bizhnc\/careRecordDocument2Export/i.test(finalURL) ||
-    (
-      finalText.includes('看護記録書Ⅱ') &&
-      finalText.includes('出力条件')
-    )
+    /\/bizhnc\/careRecordDocument2Export/i.test(currentUrl) &&
+    body.includes('看護記録書Ⅱ')
   ) {
 
-    console.log('=== OPEN EXPORT PAGE SUCCESS ===');
+    console.log(
+      '=== OPEN EXPORT PAGE SUCCESS ==='
+    );
+
     return;
   }
 
+  /*
+   * ログイン画面へ戻された
+   */
+  if (
+    body.includes('法人ID') &&
+    body.includes('ユーザーID') &&
+    body.includes('パスワード')
+  ) {
 
-  console.error('=== OPEN EXPORT PAGE FAILED ===');
+    throw new Error(
+      '看護記録書Ⅱへ移動した際にログイン画面へ戻されました。'
+    );
+  }
+
+  console.error(
+    '=== OPEN EXPORT PAGE FAILED ==='
+  );
+
+  console.error(
+    'CURRENT URL:',
+    currentUrl
+  );
+
+  console.error(
+    'CURRENT TITLE:',
+    currentTitle
+  );
 
   throw new Error(
-    '看護記録書Ⅱの出力画面へ自動移動できませんでした。'
+    '看護記録書Ⅱの出力画面を直接開けませんでした。'
   );
 }
-
 
 
 
