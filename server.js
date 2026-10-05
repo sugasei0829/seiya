@@ -795,20 +795,110 @@ async function openExportPage(p) {
   console.log('=== OPEN EXPORT PAGE START ===');
   console.log('START URL:', p.url());
 
-   const links = await p
-  .locator('a')
-  .evaluateAll((elements) =>
-    elements.map((a) => ({
-      text: (a.innerText || '').trim(),
-      href: a.href || ''
-    }))
-    .filter((x) =>
-      x.text.includes('各種情報出力') ||
-      x.text.includes('看護記録') ||
-      x.href.includes('careRecord') ||
-      x.href.includes('bizhnc')
-    )
+  /*
+   * すでに目的画面なら終了
+   */
+  if (
+    /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
+  ) {
+    console.log('Already on export page');
+    return;
+  }
+
+
+  /*
+   * カイポケのログイン済みセッションを利用して
+   * 看護記録書Ⅱの出力画面へ直接アクセス
+   *
+   * memberLoginId / basesInternalId /
+   * onesCompanyInternalId 等は固定しない
+   */
+  const directUrl =
+    'https://r.kaipoke.biz/bizhnc/careRecordDocument2Export/';
+
+  console.log(
+    'Opening direct export URL:',
+    directUrl
   );
+
+
+  await p.goto(
+    directUrl,
+    {
+      waitUntil: 'domcontentloaded',
+      timeout: 60000
+    }
+  );
+
+
+  await p.waitForTimeout(2000);
+
+
+  console.log(
+    'AFTER DIRECT URL:',
+    p.url()
+  );
+
+  console.log(
+    'AFTER DIRECT TITLE:',
+    await getSafeTitle(p)
+  );
+
+
+  const body =
+    await getBodyText(p);
+
+
+  /*
+   * 成功判定
+   */
+  if (
+    /\/bizhnc\/careRecordDocument2Export/i.test(p.url()) &&
+    body.includes('看護記録書Ⅱ')
+  ) {
+
+    console.log(
+      '=== OPEN EXPORT PAGE SUCCESS ==='
+    );
+
+    return;
+  }
+
+
+  /*
+   * ログイン画面へ戻された場合
+   */
+  if (
+    body.includes('法人ID') &&
+    body.includes('ユーザーID') &&
+    body.includes('パスワード')
+  ) {
+
+    throw new Error(
+      '看護記録書Ⅱへ移動した際にログイン画面へ戻されました。'
+    );
+  }
+
+
+  console.error(
+    'DIRECT EXPORT ACCESS FAILED'
+  );
+
+  console.error(
+    'CURRENT URL:',
+    p.url()
+  );
+
+  console.error(
+    'CURRENT TITLE:',
+    await getSafeTitle(p)
+  );
+
+
+  throw new Error(
+    '看護記録書Ⅱの出力画面を直接開けませんでした。'
+  );
+}
 
 console.log(
   'EXPORT RELATED LINKS:',
