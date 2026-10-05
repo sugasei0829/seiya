@@ -8,7 +8,8 @@ import fs from 'fs';
 
 const PORT = Number(process.env.PORT || 38765);
 
-const SECRET = process.env.BRIDGE_SECRET || '';
+const SECRET =
+  process.env.BRIDGE_SECRET || '';
 
 const KP_CORPORATE_ID =
   process.env.KAIPOKE_CORPORATE_ID || '';
@@ -20,16 +21,26 @@ const KP_PASS =
   process.env.KAIPOKE_PASSWORD || '';
 
 const PROFILE =
-  process.env.PROFILE_DIR || '/data/kaipoke-profile';
-
-const EXPORT_URL =
-  process.env.KAIPOKE_EXPORT_URL || '';
+  process.env.PROFILE_DIR ||
+  '/data/kaipoke-profile';
 
 const LOGIN_URL =
   'https://r.kaipoke.biz/kaipokebiz/login/COM020102.do';
 
+/*
+ * 今回確認できた「各種情報出力 → 出力対象選択」画面。
+ *
+ * conversationContext はセッションによって変わるため、
+ * URLには付けない。
+ */
+const OUTPUT_SELECTION_URL =
+  'https://r.kaipoke.biz/kaipokebiz/business/various_outputs/HNC096201.do';
+
+
 if (!SECRET) {
-  throw new Error('BRIDGE_SECRET is required');
+  throw new Error(
+    'BRIDGE_SECRET is required'
+  );
 }
 
 
@@ -151,6 +162,24 @@ function isKaipoke(url = '') {
 }
 
 
+function isLoginUrl(url = '') {
+
+  return (
+    /\/login\/COM020102\.do/i
+      .test(url)
+  );
+}
+
+
+function isExportUrl(url = '') {
+
+  return (
+    /\/bizhnc\/careRecordDocument2Export/i
+      .test(url)
+  );
+}
+
+
 async function getBodyText(p) {
 
   try {
@@ -179,40 +208,77 @@ async function getSafeTitle(p) {
 }
 
 
+/*
+ * ページ遷移後の短い待機
+ */
+async function waitAfterNavigation(
+  p,
+  ms = 1000
+) {
+
+  await p
+    .waitForLoadState(
+      'domcontentloaded',
+      {
+        timeout: 30000
+      }
+    )
+    .catch(() => {});
+
+  await p.waitForTimeout(ms);
+}
+
+
 /* =========================================================
    Login state
 ========================================================= */
 
 async function isLoggedIn(p) {
 
-  if (!isKaipoke(p.url())) {
+  const url =
+    p.url();
+
+  if (!isKaipoke(url)) {
     return false;
   }
+
+
+  if (isLoginUrl(url)) {
+    return false;
+  }
+
 
   const text =
     await getBodyText(p);
 
+
   /*
-   * ログイン画面に3項目が存在する場合は未ログイン
+   * ログインフォームが見えている
    */
   const looksLikeLoginPage =
     text.includes('法人ID') &&
     text.includes('ユーザーID') &&
-    text.includes('パスワード');
+    text.includes('パスワード') &&
+    text.includes('ログイン');
+
 
   if (looksLikeLoginPage) {
     return false;
   }
 
+
   /*
-   * ログアウト表示があればログイン済み
+   * ログアウトが表示されていれば
+   * 確実にログイン済み
    */
   if (text.includes('ログアウト')) {
     return true;
   }
 
+
   /*
-   * Kaipoke内でログイン画面ではない場合
+   * Kaipokeドメイン内で、
+   * ログイン画面でなければログイン済み扱い
    */
   return true;
 }
@@ -230,7 +296,8 @@ async function autoLogin(p) {
 
 
   /*
-   * ログイン済みならそのまま利用
+   * 現在のページでログイン済みなら
+   * そのまま使用
    */
   if (await isLoggedIn(p)) {
 
@@ -243,22 +310,40 @@ async function autoLogin(p) {
 
 
   /*
-   * ログインページへ移動
+   * 環境変数確認
    */
+  if (
+    !KP_CORPORATE_ID ||
+    !KP_USER_ID ||
+    !KP_PASS
+  ) {
+
+    throw new Error(
+      'Railwayに法人ID・ユーザーID・パスワードが設定されていません。'
+    );
+  }
+
+
   console.log(
     'Opening login page...'
   );
 
+
   await p.goto(
     LOGIN_URL,
     {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000
+      waitUntil:
+        'domcontentloaded',
+
+      timeout:
+        60000
     }
   );
 
 
-  await p.waitForTimeout(1000);
+  await p.waitForTimeout(
+    1000
+  );
 
 
   console.log(
@@ -273,7 +358,8 @@ async function autoLogin(p) {
 
 
   /*
-   * 既存セッションでログイン済みになった場合
+   * セッションが残っていて
+   * 自動的にログイン済みになった場合
    */
   if (await isLoggedIn(p)) {
 
@@ -286,27 +372,13 @@ async function autoLogin(p) {
 
 
   /*
-   * Railway環境変数チェック
-   */
-  if (
-    !KP_CORPORATE_ID ||
-    !KP_USER_ID ||
-    !KP_PASS
-  ) {
-
-    throw new Error(
-      'Railwayに法人ID・ユーザーID・パスワードが設定されていません。'
-    );
-  }
-
-
-  /*
-   * テキスト入力欄を取得
+   * 法人ID / ユーザーID
    */
   const textInputs =
     p.locator(
       'input[type="text"]:visible'
     );
+
 
   const textCount =
     await textInputs.count();
@@ -327,16 +399,23 @@ async function autoLogin(p) {
 
 
   /*
-   * 1番目：法人ID
-   * 2番目：ユーザーID
+   * 実際のログイン画面では
+   *
+   * 1番目 = 法人ID
+   * 2番目 = ユーザーID
    */
   await textInputs
     .nth(0)
-    .fill(KP_CORPORATE_ID);
+    .fill(
+      KP_CORPORATE_ID
+    );
+
 
   await textInputs
     .nth(1)
-    .fill(KP_USER_ID);
+    .fill(
+      KP_USER_ID
+    );
 
 
   console.log(
@@ -353,17 +432,9 @@ async function autoLogin(p) {
     ).first();
 
 
-  const passwordCount =
-    await passwordInput.count();
-
-
-  console.log(
-    'Visible password inputs:',
-    passwordCount
-  );
-
-
-  if (passwordCount < 1) {
+  if (
+    await passwordInput.count() < 1
+  ) {
 
     throw new Error(
       'パスワード入力欄を検出できませんでした。'
@@ -382,7 +453,7 @@ async function autoLogin(p) {
 
 
   /*
-   * ログインボタン検出
+   * ログインボタン
    */
   const loginSelectors = [
 
@@ -392,14 +463,12 @@ async function autoLogin(p) {
 
     'input[type="image"]',
 
-    'input[type="submit"]',
-
-    'a:has-text("ログイン")'
+    'input[type="submit"]'
 
   ];
 
 
-  let loginClicked = false;
+  let loginButton = null;
 
 
   for (
@@ -413,11 +482,9 @@ async function autoLogin(p) {
       ).first();
 
 
-    const count =
-      await candidate.count();
-
-
-    if (count < 1) {
+    if (
+      await candidate.count() < 1
+    ) {
       continue;
     }
 
@@ -425,12 +492,18 @@ async function autoLogin(p) {
     const visible =
       await candidate
         .isVisible()
-        .catch(() => false);
+        .catch(
+          () => false
+        );
 
 
     if (!visible) {
       continue;
     }
+
+
+    loginButton =
+      candidate;
 
 
     console.log(
@@ -439,16 +512,11 @@ async function autoLogin(p) {
     );
 
 
-    await candidate.click();
-
-
-    loginClicked = true;
-
     break;
   }
 
 
-  if (!loginClicked) {
+  if (!loginButton) {
 
     throw new Error(
       'カイポケのログインボタンを検出できませんでした。'
@@ -457,16 +525,23 @@ async function autoLogin(p) {
 
 
   /*
-   * ログイン後の遷移待ち
+   * ログイン
    */
-  await p
-    .waitForLoadState(
-      'domcontentloaded',
-      {
-        timeout: 60000
-      }
-    )
-    .catch(() => {});
+  await Promise.all([
+
+    p
+      .waitForLoadState(
+        'domcontentloaded',
+        {
+          timeout:
+            60000
+        }
+      )
+      .catch(() => {}),
+
+    loginButton.click()
+
+  ]);
 
 
   await p.waitForTimeout(
@@ -486,41 +561,59 @@ async function autoLogin(p) {
 
 
   /*
-   * ログイン判定
+   * ログイン成功確認
    */
-  if (!(await isLoggedIn(p))) {
+  if (
+    !(await isLoggedIn(p))
+  ) {
 
     const body =
       await getBodyText(p);
 
+
     /*
-     * 認証情報はログに出さない
+     * 認証情報はログへ出さない
      */
-    const safePreview =
-      body
-        .replace(
-          KP_CORPORATE_ID,
-          '[CORPORATE_ID]'
-        )
-        .replace(
-          KP_USER_ID,
-          '[USER_ID]'
-        )
-        .replace(
-          KP_PASS,
-          '[PASSWORD]'
-        )
-        .slice(0, 500);
+    let safePreview =
+      body;
+
+
+    for (
+      const secretValue
+      of [
+        KP_CORPORATE_ID,
+        KP_USER_ID,
+        KP_PASS
+      ]
+    ) {
+
+      if (
+        secretValue
+      ) {
+
+        safePreview =
+          safePreview
+            .split(
+              secretValue
+            )
+            .join(
+              '[REDACTED]'
+            );
+      }
+    }
 
 
     console.error(
       'LOGIN PAGE MESSAGE:',
-      safePreview
+      safePreview.slice(
+        0,
+        500
+      )
     );
 
 
     throw new Error(
-      'カイポケへのログインに失敗しました。ログイン画面に留まっています。'
+      'カイポケへのログインに失敗しました。'
     );
   }
 
@@ -542,17 +635,12 @@ function toJapaneseEra(
   dateString
 ) {
 
-  const d =
-    new Date(
-      `${dateString}T00:00:00`
-    );
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/
+      .exec(dateString);
 
 
-  if (
-    Number.isNaN(
-      d.getTime()
-    )
-  ) {
+  if (!match) {
 
     throw new Error(
       '日付の変換に失敗しました。'
@@ -560,18 +648,38 @@ function toJapaneseEra(
   }
 
 
+  const year =
+    Number(match[1]);
+
+  const month =
+    Number(match[2]);
+
+  const day =
+    Number(match[3]);
+
+
+  /*
+   * 現在の対象期間は令和
+   */
+  if (year < 2019) {
+
+    throw new Error(
+      '現在の自動取得は令和の日付に対応しています。'
+    );
+  }
+
+
   return {
 
-    era: '令和',
+    era:
+      '令和',
 
     year:
-      d.getFullYear() - 2018,
+      year - 2018,
 
-    month:
-      d.getMonth() + 1,
+    month,
 
-    day:
-      d.getDate()
+    day
 
   };
 }
@@ -591,22 +699,31 @@ async function selectCandidate(
     of values
   ) {
 
+    /*
+     * label一致
+     */
     try {
 
-      await select.selectOption({
-        label: String(value)
-      });
+      await select
+        .selectOption({
+          label:
+            String(value)
+        });
 
       return true;
 
     } catch {}
 
 
+    /*
+     * value一致
+     */
     try {
 
-      await select.selectOption(
-        String(value)
-      );
+      await select
+        .selectOption(
+          String(value)
+        );
 
       return true;
 
@@ -615,6 +732,359 @@ async function selectCandidate(
 
 
   return false;
+}
+
+
+/* =========================================================
+   Open 看護記録書Ⅱ export page
+========================================================= */
+
+async function openExportPage(p) {
+
+  console.log(
+    '=== OPEN EXPORT PAGE START ==='
+  );
+
+  console.log(
+    'START URL:',
+    p.url()
+  );
+
+
+  /*
+   * すでに出力条件画面なら終了
+   */
+  if (
+    isExportUrl(
+      p.url()
+    )
+  ) {
+
+    console.log(
+      'Already on 看護記録書Ⅱ export page'
+    );
+
+    return;
+  }
+
+
+  /*
+   * 念のためログイン確認
+   */
+  if (
+    !(await isLoggedIn(p))
+  ) {
+
+    console.log(
+      'Not logged in. Logging in...'
+    );
+
+    await autoLogin(p);
+  }
+
+
+  /*
+   * =====================================================
+   * STEP 1
+   * 「各種情報出力 → 出力対象選択」画面へ移動
+   * =====================================================
+   */
+
+  console.log(
+    'Opening 出力対象選択 page...'
+  );
+
+
+  await p.goto(
+    OUTPUT_SELECTION_URL,
+    {
+      waitUntil:
+        'domcontentloaded',
+
+      timeout:
+        60000
+    }
+  );
+
+
+  await p.waitForTimeout(
+    1500
+  );
+
+
+  console.log(
+    'OUTPUT SELECTION URL:',
+    p.url()
+  );
+
+  console.log(
+    'OUTPUT SELECTION TITLE:',
+    await getSafeTitle(p)
+  );
+
+
+  /*
+   * セッション切れ確認
+   */
+  if (
+    !(await isLoggedIn(p))
+  ) {
+
+    console.log(
+      'Session expired while opening output selection page.'
+    );
+
+
+    await autoLogin(p);
+
+
+    /*
+     * ログインし直した後に
+     * もう一度出力対象選択画面へ
+     */
+    await p.goto(
+      OUTPUT_SELECTION_URL,
+      {
+        waitUntil:
+          'domcontentloaded',
+
+        timeout:
+          60000
+      }
+    );
+
+
+    await p.waitForTimeout(
+      1500
+    );
+  }
+
+
+  /*
+   * 出力対象選択画面を確認
+   */
+  const selectionBody =
+    await getBodyText(p);
+
+
+  console.log(
+    'Selection page contains 看護記録書Ⅱ:',
+    selectionBody.includes(
+      '看護記録書Ⅱ'
+    )
+  );
+
+
+  if (
+    !selectionBody.includes(
+      '看護記録書Ⅱ'
+    )
+  ) {
+
+    console.error(
+      'CURRENT URL:',
+      p.url()
+    );
+
+    console.error(
+      'CURRENT TITLE:',
+      await getSafeTitle(p)
+    );
+
+
+    throw new Error(
+      '各種情報出力画面で「看護記録書Ⅱ」を検出できませんでした。'
+    );
+  }
+
+
+  /*
+   * =====================================================
+   * STEP 2
+   * 「看護記録書Ⅱ」のリンクを取得
+   * =====================================================
+   */
+
+  console.log(
+    'Searching 看護記録書Ⅱ link...'
+  );
+
+
+  /*
+   * まずリンクとして探す
+   */
+  let recordLink =
+    p
+      .locator(
+        'a',
+        {
+          hasText:
+            '看護記録書Ⅱ'
+        }
+      )
+      .first();
+
+
+  let linkCount =
+    await recordLink.count();
+
+
+  /*
+   * 見つからなければ
+   * テキストから探す
+   */
+  if (
+    linkCount < 1
+  ) {
+
+    recordLink =
+      p
+        .getByText(
+          '看護記録書Ⅱ',
+          {
+            exact:
+              true
+          }
+        )
+        .first();
+
+
+    linkCount =
+      await recordLink.count();
+  }
+
+
+  if (
+    linkCount < 1
+  ) {
+
+    throw new Error(
+      '「看護記録書Ⅱ」のリンクを検出できませんでした。'
+    );
+  }
+
+
+  /*
+   * hrefをログに確認
+   *
+   * ※値そのものは後から変化する可能性があるので
+   *   コードには固定しない
+   */
+  const href =
+    await recordLink
+      .getAttribute(
+        'href'
+      )
+      .catch(
+        () => null
+      );
+
+
+  console.log(
+    '看護記録書Ⅱ link found:',
+    href
+      ? 'yes'
+      : 'no href'
+  );
+
+
+  /*
+   * =====================================================
+   * STEP 3
+   * 看護記録書Ⅱをクリック
+   * =====================================================
+   */
+
+  console.log(
+    'Clicking 看護記録書Ⅱ...'
+  );
+
+
+  await Promise.all([
+
+    p
+      .waitForLoadState(
+        'domcontentloaded',
+        {
+          timeout:
+            60000
+        }
+      )
+      .catch(() => {}),
+
+    recordLink.click()
+
+  ]);
+
+
+  await p.waitForTimeout(
+    1500
+  );
+
+
+  console.log(
+    'AFTER RECORD2 CLICK URL:',
+    p.url()
+  );
+
+  console.log(
+    'AFTER RECORD2 CLICK TITLE:',
+    await getSafeTitle(p)
+  );
+
+
+  /*
+   * =====================================================
+   * STEP 4
+   * 出力条件画面確認
+   * =====================================================
+   */
+
+  const exportBody =
+    await getBodyText(p);
+
+
+  const exportPageDetected =
+    isExportUrl(
+      p.url()
+    ) ||
+    (
+      exportBody.includes(
+        '看護記録書Ⅱ'
+      ) &&
+      exportBody.includes(
+        '出力条件'
+      ) &&
+      exportBody.includes(
+        'CSV出力'
+      )
+    );
+
+
+  if (
+    !exportPageDetected
+  ) {
+
+    console.error(
+      'CURRENT URL:',
+      p.url()
+    );
+
+    console.error(
+      'CURRENT TITLE:',
+      await getSafeTitle(p)
+    );
+
+
+    throw new Error(
+      '「看護記録書Ⅱ」をクリックしましたが、出力条件画面へ移動できませんでした。'
+    );
+  }
+
+
+  console.log(
+    '=== OPEN EXPORT PAGE SUCCESS ==='
+  );
 }
 
 
@@ -629,10 +1099,26 @@ async function setExportDates(
 ) {
 
   console.log(
-    'Setting export dates:',
+    '=== SET EXPORT DATES START ==='
+  );
+
+  console.log(
+    'Requested:',
     from,
+    '->',
     to
   );
+
+
+  const startDate =
+    toJapaneseEra(
+      from
+    );
+
+  const endDate =
+    toJapaneseEra(
+      to
+    );
 
 
   const selects =
@@ -651,22 +1137,32 @@ async function setExportDates(
   );
 
 
-  if (count < 6) {
+  /*
+   * 実際の画面では
+   *
+   * 開始:
+   * 元号 / 年 / 月 / 日
+   *
+   * 終了:
+   * 元号 / 年 / 月 / 日
+   *
+   * 合計8個
+   */
+  if (
+    count < 8
+  ) {
 
     throw new Error(
-      `訪問日の選択欄を検出できません。select数=${count}`
+      `訪問日の選択欄を8個検出できませんでした。検出数=${count}`
     );
   }
 
 
-  const startDate =
-    toJapaneseEra(from);
-
-  const endDate =
-    toJapaneseEra(to);
-
-
-  const optionTexts = [];
+  /*
+   * 「令和」が入っているselectを探す
+   */
+  let startIndex =
+    -1;
 
 
   for (
@@ -675,63 +1171,64 @@ async function setExportDates(
     i++
   ) {
 
+    const options =
+      await selects
+        .nth(i)
+        .locator(
+          'option'
+        )
+        .allTextContents();
+
+
     const text =
-      (
-        await selects
-          .nth(i)
-          .locator('option')
-          .allTextContents()
-      ).join('|');
+      options.join(
+        '|'
+      );
 
 
-    optionTexts.push(
-      text
+    if (
+      text.includes(
+        '令和'
+      )
+    ) {
+
+      startIndex =
+        i;
+
+      break;
+    }
+  }
+
+
+  if (
+    startIndex < 0
+  ) {
+
+    throw new Error(
+      '訪問日の「令和」選択欄を検出できませんでした。'
     );
   }
 
 
-  let startIndex =
-    optionTexts.findIndex(
-      text =>
-        text.includes('令和')
-    );
+  console.log(
+    'Date selects start index:',
+    startIndex
+  );
 
 
-  if (startIndex < 0) {
-    startIndex = 0;
-  }
+  const values = [
 
+    startDate.era,
+    startDate.year,
+    startDate.month,
+    startDate.day,
 
-  const hasEra =
-    optionTexts[
-      startIndex
-    ]?.includes('令和');
+    endDate.era,
+    endDate.year,
+    endDate.month,
+    endDate.day
 
-
-  const values =
-    hasEra
-
-      ? [
-          startDate.era,
-          startDate.year,
-          startDate.month,
-          startDate.day,
-
-          endDate.era,
-          endDate.year,
-          endDate.month,
-          endDate.day
-        ]
-
-      : [
-          startDate.year,
-          startDate.month,
-          startDate.day,
-
-          endDate.year,
-          endDate.month,
-          endDate.day
-        ];
+  ];
 
 
   for (
@@ -758,6 +1255,7 @@ async function setExportDates(
           `${value}年`,
           `${value}月`,
           `${value}日`,
+          String(value),
           String(value)
             .padStart(
               2,
@@ -767,7 +1265,31 @@ async function setExportDates(
       );
 
 
-    if (!success) {
+    if (
+      !success
+    ) {
+
+      const options =
+        await target
+          .locator(
+            'option'
+          )
+          .allTextContents()
+          .catch(
+            () => []
+          );
+
+
+      console.error(
+        `DATE SELECT ${i + 1} OPTIONS:`,
+        options
+          .slice(
+            0,
+            30
+          )
+          .join('|')
+      );
+
 
       throw new Error(
         `日付欄${i + 1}を設定できませんでした。`
@@ -777,170 +1299,111 @@ async function setExportDates(
 
 
   console.log(
-    'Export dates configured'
+    '=== SET EXPORT DATES SUCCESS ==='
   );
 }
 
 
 /* =========================================================
-   Open 看護記録書Ⅱ export page
-========================================================= */
-/* =========================================================
-   Open 看護記録書Ⅱ export page
+   CSV button
 ========================================================= */
 
-async function openExportPage(p) {
+async function findCsvButton(p) {
 
-  console.log('=== OPEN EXPORT PAGE START ===');
-  console.log('START URL:', p.url());
+  /*
+   * まずボタン
+   */
+  const button =
+    p
+      .getByRole(
+        'button',
+        {
+          name:
+            'CSV出力'
+        }
+      )
+      .last();
 
-  // すでに目的画面なら終了
+
   if (
-    /\/bizhnc\/careRecordDocument2Export/i.test(p.url())
+    await button.count() > 0
   ) {
-    console.log('Already on export page');
-    return;
-  }
-
-  /*
-   * ログイン状態を確認
-   */
-  if (!(await isLoggedIn(p))) {
-
-    console.log('Not logged in. Logging in...');
-
-    await autoLogin(p);
-
-    await p.waitForTimeout(1000);
-  }
-
-  /*
-   * まず環境変数のURLを使用
-   */
-  if (EXPORT_URL) {
-
-    console.log('Using KAIPOKE_EXPORT_URL');
-
-    await p.goto(
-      EXPORT_URL,
-      {
-        waitUntil: 'domcontentloaded',
-        timeout: 60000
-      }
-    );
-
-    await p.waitForTimeout(1500);
-
-    console.log(
-      'AFTER EXPORT_URL:',
-      p.url()
-    );
-
-    const body =
-      await getBodyText(p);
 
     if (
-      /\/bizhnc\/careRecordDocument2Export/i.test(p.url()) &&
-      body.includes('看護記録書Ⅱ')
+      await button
+        .isVisible()
+        .catch(
+          () => false
+        )
     ) {
 
-      console.log(
-        '=== OPEN EXPORT PAGE SUCCESS ==='
-      );
-
-      return;
+      return button;
     }
   }
 
+
   /*
-   * ログイン済みセッションから
-   * 看護記録書ⅡのURLへ直接アクセス
+   * input submit
    */
-  const directUrl =
-    'https://r.kaipoke.biz/bizhnc/careRecordDocument2Export/';
+  const submit =
+    p
+      .locator(
+        'input[type="submit"][value*="CSV"]'
+      )
+      .last();
 
-  console.log(
-    'Opening direct export URL:',
-    directUrl
-  );
 
-  await p.goto(
-    directUrl,
-    {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000
+  if (
+    await submit.count() > 0
+  ) {
+
+    if (
+      await submit
+        .isVisible()
+        .catch(
+          () => false
+        )
+    ) {
+
+      return submit;
     }
-  );
-
-  await p.waitForTimeout(2000);
-
-  const currentUrl =
-    p.url();
-
-  const currentTitle =
-    await getSafeTitle(p);
-
-  const body =
-    await getBodyText(p);
-
-  console.log(
-    'AFTER DIRECT URL:',
-    currentUrl
-  );
-
-  console.log(
-    'AFTER DIRECT TITLE:',
-    currentTitle
-  );
-
-  /*
-   * 成功
-   */
-  if (
-    /\/bizhnc\/careRecordDocument2Export/i.test(currentUrl) &&
-    body.includes('看護記録書Ⅱ')
-  ) {
-
-    console.log(
-      '=== OPEN EXPORT PAGE SUCCESS ==='
-    );
-
-    return;
   }
 
+
   /*
-   * ログイン画面へ戻された
+   * テキスト
    */
+  const text =
+    p
+      .getByText(
+        'CSV出力',
+        {
+          exact:
+            true
+        }
+      )
+      .last();
+
+
   if (
-    body.includes('法人ID') &&
-    body.includes('ユーザーID') &&
-    body.includes('パスワード')
+    await text.count() > 0
   ) {
 
-    throw new Error(
-      '看護記録書Ⅱへ移動した際にログイン画面へ戻されました。'
-    );
+    if (
+      await text
+        .isVisible()
+        .catch(
+          () => false
+        )
+    ) {
+
+      return text;
+    }
   }
 
-  console.error(
-    '=== OPEN EXPORT PAGE FAILED ==='
-  );
 
-  console.error(
-    'CURRENT URL:',
-    currentUrl
-  );
-
-  console.error(
-    'CURRENT TITLE:',
-    currentTitle
-  );
-
-  throw new Error(
-    '看護記録書Ⅱの出力画面を直接開けませんでした。'
-  );
+  return null;
 }
-
 
 
 /* =========================================================
@@ -974,7 +1437,8 @@ app.get(
 
       res.json({
 
-        running: true,
+        running:
+          true,
 
         loggedIn:
           await isLoggedIn(p),
@@ -1028,7 +1492,8 @@ app.post(
   '/connect',
   async (req, res) => {
 
-    let p = null;
+    let p =
+      null;
 
 
     try {
@@ -1070,9 +1535,11 @@ app.post(
 
       res.json({
 
-        ok: true,
+        ok:
+          true,
 
-        loggedIn: true,
+        loggedIn:
+          true,
 
         message:
           'カイポケへ接続しました。'
@@ -1135,6 +1602,7 @@ app.post(
               currentTitle
 
           }
+
         });
     }
   }
@@ -1149,7 +1617,8 @@ app.post(
   '/export',
   async (req, res) => {
 
-    let p = null;
+    let p =
+      null;
 
 
     try {
@@ -1161,19 +1630,43 @@ app.post(
         req.body || {};
 
 
+      /*
+       * 日付形式チェック
+       */
       if (
         !/^\d{4}-\d{2}-\d{2}$/
-          .test(from || '') ||
+          .test(
+            from || ''
+          ) ||
 
         !/^\d{4}-\d{2}-\d{2}$/
-          .test(to || '')
+          .test(
+            to || ''
+          )
       ) {
 
         return res
           .status(400)
           .json({
+
             error:
               '日付が不正です。'
+
+          });
+      }
+
+
+      if (
+        from > to
+      ) {
+
+        return res
+          .status(400)
+          .json({
+
+            error:
+              '開始日は終了日以前の日付を指定してください。'
+
           });
       }
 
@@ -1182,17 +1675,37 @@ app.post(
         '=== EXPORT START ==='
       );
 
+      console.log(
+        'PERIOD:',
+        from,
+        '->',
+        to
+      );
+
 
       p =
         await getPage();
 
 
+      /*
+       * 1. ログイン
+       */
       await autoLogin(p);
 
 
+      /*
+       * 2. 各種情報出力
+       *    ↓
+       *    看護記録書Ⅱ
+       *    ↓
+       *    出力条件画面
+       */
       await openExportPage(p);
 
 
+      /*
+       * 3. 日付設定
+       */
       await setExportDates(
         p,
         from,
@@ -1201,22 +1714,15 @@ app.post(
 
 
       /*
-       * CSV出力ボタン
+       * 4. CSV出力ボタン
        */
       const csvButton =
-        p.getByText(
-          'CSV出力',
-          {
-            exact: true
-          }
-        ).last();
+        await findCsvButton(p);
 
 
-      const buttonCount =
-        await csvButton.count();
-
-
-      if (buttonCount < 1) {
+      if (
+        !csvButton
+      ) {
 
         throw new Error(
           'CSV出力ボタンを検出できませんでした。'
@@ -1229,11 +1735,15 @@ app.post(
       );
 
 
+      /*
+       * 5. CSVダウンロード
+       */
       const downloadPromise =
         p.waitForEvent(
           'download',
           {
-            timeout: 60000
+            timeout:
+              120000
           }
         );
 
@@ -1241,15 +1751,48 @@ app.post(
       await csvButton.click();
 
 
+      console.log(
+        'CSV button clicked'
+      );
+
+
       const download =
         await downloadPromise;
+
+
+      console.log(
+        'Download event received'
+      );
+
+
+      /*
+       * ダウンロード失敗確認
+       */
+      const failure =
+        await download
+          .failure()
+          .catch(
+            () => null
+          );
+
+
+      if (
+        failure
+      ) {
+
+        throw new Error(
+          `CSVダウンロードに失敗しました: ${failure}`
+        );
+      }
 
 
       const temporaryPath =
         await download.path();
 
 
-      if (!temporaryPath) {
+      if (
+        !temporaryPath
+      ) {
 
         throw new Error(
           'CSVファイルを取得できませんでした。'
@@ -1257,10 +1800,23 @@ app.post(
       }
 
 
+      /*
+       * ファイル読込
+       */
       const buffer =
         fs.readFileSync(
           temporaryPath
         );
+
+
+      if (
+        buffer.length < 1
+      ) {
+
+        throw new Error(
+          '取得したCSVファイルが空です。'
+        );
+      }
 
 
       console.log(
@@ -1275,9 +1831,13 @@ app.post(
       );
 
 
+      /*
+       * WordPressへ返却
+       */
       res.json({
 
-        ok: true,
+        ok:
+          true,
 
         filename:
           download
@@ -1299,12 +1859,14 @@ app.post(
         '=== EXPORT ERROR ==='
       );
 
+
       console.error(
         'URL:',
         p
           ? p.url()
           : ''
       );
+
 
       console.error(
         'TITLE:',
@@ -1313,10 +1875,12 @@ app.post(
           : ''
       );
 
+
       console.error(
         'ERROR:',
         e?.message || e
       );
+
 
       console.error(
         '===================='
