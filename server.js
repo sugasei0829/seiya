@@ -27,14 +27,8 @@ const PROFILE =
 const LOGIN_URL =
   'https://r.kaipoke.biz/kaipokebiz/login/COM020102.do';
 
-/*
- * 今回確認できた「各種情報出力 → 出力対象選択」画面。
- *
- * conversationContext はセッションによって変わるため、
- * URLには付けない。
- */
-const OUTPUT_SELECTION_URL =
-  'https://r.kaipoke.biz/kaipokebiz/business/various_outputs/HNC096201.do';
+const BIZTOP_URL =
+  'https://r.kaipoke.biz/biztop/';
 
 
 if (!SECRET) {
@@ -208,9 +202,6 @@ async function getSafeTitle(p) {
 }
 
 
-/*
- * ページ遷移後の短い待機
- */
 async function waitAfterNavigation(
   p,
   ms = 1000
@@ -252,9 +243,6 @@ async function isLoggedIn(p) {
     await getBodyText(p);
 
 
-  /*
-   * ログインフォームが見えている
-   */
   const looksLikeLoginPage =
     text.includes('法人ID') &&
     text.includes('ユーザーID') &&
@@ -267,19 +255,11 @@ async function isLoggedIn(p) {
   }
 
 
-  /*
-   * ログアウトが表示されていれば
-   * 確実にログイン済み
-   */
   if (text.includes('ログアウト')) {
     return true;
   }
 
 
-  /*
-   * Kaipokeドメイン内で、
-   * ログイン画面でなければログイン済み扱い
-   */
   return true;
 }
 
@@ -296,8 +276,7 @@ async function autoLogin(p) {
 
 
   /*
-   * 現在のページでログイン済みなら
-   * そのまま使用
+   * すでにログイン済み
    */
   if (await isLoggedIn(p)) {
 
@@ -310,7 +289,7 @@ async function autoLogin(p) {
 
 
   /*
-   * 環境変数確認
+   * Railway環境変数確認
    */
   if (
     !KP_CORPORATE_ID ||
@@ -358,8 +337,8 @@ async function autoLogin(p) {
 
 
   /*
-   * セッションが残っていて
-   * 自動的にログイン済みになった場合
+   * 保存済みセッションで
+   * 自動ログインされた場合
    */
   if (await isLoggedIn(p)) {
 
@@ -398,12 +377,6 @@ async function autoLogin(p) {
   }
 
 
-  /*
-   * 実際のログイン画面では
-   *
-   * 1番目 = 法人ID
-   * 2番目 = ユーザーID
-   */
   await textInputs
     .nth(0)
     .fill(
@@ -525,26 +498,13 @@ async function autoLogin(p) {
 
 
   /*
-   * ログイン
+   * ログイン実行
    */
-  await Promise.all([
-
-    p
-      .waitForLoadState(
-        'domcontentloaded',
-        {
-          timeout:
-            60000
-        }
-      )
-      .catch(() => {}),
-
-    loginButton.click()
-
-  ]);
+  await loginButton.click();
 
 
-  await p.waitForTimeout(
+  await waitAfterNavigation(
+    p,
     2000
   );
 
@@ -571,13 +531,13 @@ async function autoLogin(p) {
       await getBodyText(p);
 
 
-    /*
-     * 認証情報はログへ出さない
-     */
     let safePreview =
       body;
 
 
+    /*
+     * 認証情報をログへ出さない
+     */
     for (
       const secretValue
       of [
@@ -587,9 +547,7 @@ async function autoLogin(p) {
       ]
     ) {
 
-      if (
-        secretValue
-      ) {
+      if (secretValue) {
 
         safePreview =
           safePreview
@@ -658,9 +616,6 @@ function toJapaneseEra(
     Number(match[3]);
 
 
-  /*
-   * 現在の対象期間は令和
-   */
   if (year < 2019) {
 
     throw new Error(
@@ -739,10 +694,6 @@ async function selectCandidate(
    Open 看護記録書Ⅱ export page
 ========================================================= */
 
-/* =========================================================
-   Open 看護記録書Ⅱ export page
-========================================================= */
-
 async function openExportPage(p) {
 
   console.log(
@@ -782,23 +733,25 @@ async function openExportPage(p) {
 
 
   /*
-   * =====================================================
    * STEP 1
-   * biztop へ移動
-   * =====================================================
+   * biztopへ移動
    */
-
   console.log(
     'Opening biztop...'
   );
 
+
   await p.goto(
-    'https://r.kaipoke.biz/biztop/',
+    BIZTOP_URL,
     {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000
+      waitUntil:
+        'domcontentloaded',
+
+      timeout:
+        60000
     }
   );
+
 
   await p.waitForTimeout(
     1500
@@ -817,12 +770,38 @@ async function openExportPage(p) {
 
 
   /*
-   * =====================================================
-   * STEP 2
-   * 上部メニュー「各種情報出力」を探す
-   * =====================================================
+   * biztop移動時に
+   * ログイン画面へ戻された場合
    */
+  if (!(await isLoggedIn(p))) {
 
+    console.log(
+      'Session lost. Re-login...'
+    );
+
+    await autoLogin(p);
+
+    await p.goto(
+      BIZTOP_URL,
+      {
+        waitUntil:
+          'domcontentloaded',
+
+        timeout:
+          60000
+      }
+    );
+
+    await p.waitForTimeout(
+      1500
+    );
+  }
+
+
+  /*
+   * STEP 2
+   * 各種情報出力
+   */
   console.log(
     'Searching 各種情報出力...'
   );
@@ -832,27 +811,30 @@ async function openExportPage(p) {
     p.getByText(
       '各種情報出力',
       {
-        exact: true
+        exact:
+          true
       }
     ).first();
 
 
-  /*
-   * exactで見つからない場合
-   */
-  if (await infoMenu.count() < 1) {
+  if (
+    await infoMenu.count() < 1
+  ) {
 
     infoMenu =
       p.getByText(
         '各種情報出力',
         {
-          exact: false
+          exact:
+            false
         }
       ).first();
   }
 
 
-  if (await infoMenu.count() < 1) {
+  if (
+    await infoMenu.count() < 1
+  ) {
 
     console.error(
       '各種情報出力 menu not found'
@@ -862,6 +844,7 @@ async function openExportPage(p) {
       'CURRENT URL:',
       p.url()
     );
+
 
     throw new Error(
       '上部メニュー「各種情報出力」を検出できませんでした。'
@@ -875,9 +858,11 @@ async function openExportPage(p) {
 
 
   /*
-   * hoverでサブメニューを表示
+   * マウスを乗せて
+   * サブメニューを表示
    */
-  await infoMenu.hover()
+  await infoMenu
+    .hover()
     .catch(() => {});
 
 
@@ -887,12 +872,9 @@ async function openExportPage(p) {
 
 
   /*
-   * =====================================================
    * STEP 3
-   * 「出力対象選択」を探す
-   * =====================================================
+   * 出力対象選択
    */
-
   console.log(
     'Searching 出力対象選択...'
   );
@@ -902,28 +884,42 @@ async function openExportPage(p) {
     p.getByText(
       '出力対象選択',
       {
-        exact: true
+        exact:
+          true
       }
     ).first();
 
 
-  /*
-   * hoverだけで出ない場合は
-   * 各種情報出力をクリック
-   */
+  let outputVisible =
+    false;
+
+
   if (
-    await outputTarget.count() < 1 ||
-    !(await outputTarget
-      .isVisible()
-      .catch(() => false))
+    await outputTarget.count() > 0
   ) {
 
+    outputVisible =
+      await outputTarget
+        .isVisible()
+        .catch(
+          () => false
+        );
+  }
+
+
+  /*
+   * hoverだけでは出なければ
+   * 各種情報出力をクリック
+   */
+  if (!outputVisible) {
+
     console.log(
-      'Clicking 各種情報出力...'
+      'Hover did not show submenu. Clicking 各種情報出力...'
     );
 
 
-    await infoMenu.click()
+    await infoMenu
+      .click()
       .catch(() => {});
 
 
@@ -936,7 +932,8 @@ async function openExportPage(p) {
       p.getByText(
         '出力対象選択',
         {
-          exact: true
+          exact:
+            true
         }
       ).first();
   }
@@ -952,18 +949,31 @@ async function openExportPage(p) {
   }
 
 
+  const targetVisible =
+    await outputTarget
+      .isVisible()
+      .catch(
+        () => false
+      );
+
+
+  if (!targetVisible) {
+
+    throw new Error(
+      '「出力対象選択」は見つかりましたが、表示されていません。'
+    );
+  }
+
+
   console.log(
     '出力対象選択 found'
   );
 
 
   /*
-   * =====================================================
    * STEP 4
    * 出力対象選択をクリック
-   * =====================================================
    */
-
   console.log(
     'Clicking 出力対象選択...'
   );
@@ -972,17 +982,8 @@ async function openExportPage(p) {
   await outputTarget.click();
 
 
-  await p
-    .waitForLoadState(
-      'domcontentloaded',
-      {
-        timeout: 60000
-      }
-    )
-    .catch(() => {});
-
-
-  await p.waitForTimeout(
+  await waitAfterNavigation(
+    p,
     1500
   );
 
@@ -999,19 +1000,16 @@ async function openExportPage(p) {
 
 
   /*
-   * =====================================================
    * STEP 5
    * 看護記録書Ⅱを探す
-   * =====================================================
    */
-
-  const body =
+  const selectionBody =
     await getBodyText(p);
 
 
   console.log(
     'Selection contains 看護記録書Ⅱ:',
-    body.includes(
+    selectionBody.includes(
       '看護記録書Ⅱ'
     )
   );
@@ -1019,13 +1017,15 @@ async function openExportPage(p) {
 
   /*
    * デバッグ用
-   * リンク名だけ取得
+   * ページ内リンク文字列をログに出す
    */
   const linkTexts =
     await p
       .locator('a')
       .allTextContents()
-      .catch(() => []);
+      .catch(
+        () => []
+      );
 
 
   console.log(
@@ -1037,38 +1037,47 @@ async function openExportPage(p) {
             text.trim()
         )
         .filter(Boolean)
-        .slice(0, 100)
+        .slice(
+          0,
+          100
+        )
     )
   );
 
 
   /*
-   * 看護記録書Ⅱのリンク
+   * まずaタグとして検索
    */
   let recordLink =
-    p.locator(
-      'a',
-      {
-        hasText:
-          '看護記録書Ⅱ'
-      }
-    ).first();
+    p
+      .locator(
+        'a',
+        {
+          hasText:
+            '看護記録書Ⅱ'
+        }
+      )
+      .first();
 
 
   /*
-   * aタグで見つからない場合
+   * aタグで取れなければ
+   * テキストとして検索
    */
   if (
     await recordLink.count() < 1
   ) {
 
     recordLink =
-      p.getByText(
-        '看護記録書Ⅱ',
-        {
-          exact: true
-        }
-      ).first();
+      p
+        .getByText(
+          '看護記録書Ⅱ',
+          {
+            exact:
+              true
+          }
+        )
+        .first();
   }
 
 
@@ -1097,18 +1106,53 @@ async function openExportPage(p) {
   }
 
 
+  const recordVisible =
+    await recordLink
+      .isVisible()
+      .catch(
+        () => false
+      );
+
+
+  if (!recordVisible) {
+
+    throw new Error(
+      '「看護記録書Ⅱ」は見つかりましたが、表示されていません。'
+    );
+  }
+
+
   console.log(
     '看護記録書Ⅱ found'
   );
 
 
   /*
-   * =====================================================
-   * STEP 6
-   * 看護記録書Ⅱをクリック
-   * =====================================================
+   * hrefは確認用だけ。
+   * 固定URLとして使用しない。
    */
+  const recordHref =
+    await recordLink
+      .getAttribute(
+        'href'
+      )
+      .catch(
+        () => null
+      );
 
+
+  console.log(
+    '看護記録書Ⅱ href exists:',
+    Boolean(
+      recordHref
+    )
+  );
+
+
+  /*
+   * STEP 6
+   * 看護記録書Ⅱクリック
+   */
   console.log(
     'Clicking 看護記録書Ⅱ...'
   );
@@ -1117,17 +1161,8 @@ async function openExportPage(p) {
   await recordLink.click();
 
 
-  await p
-    .waitForLoadState(
-      'domcontentloaded',
-      {
-        timeout: 60000
-      }
-    )
-    .catch(() => {});
-
-
-  await p.waitForTimeout(
+  await waitAfterNavigation(
+    p,
     1500
   );
 
@@ -1144,200 +1179,9 @@ async function openExportPage(p) {
 
 
   /*
-   * =====================================================
    * STEP 7
-   * 出力条件画面か確認
-   * =====================================================
-   */
-
-  const exportBody =
-    await getBodyText(p);
-
-
-  const success =
-    isExportUrl(
-      p.url()
-    ) ||
-    (
-      exportBody.includes(
-        '看護記録書Ⅱ'
-      ) &&
-      exportBody.includes(
-        '出力条件'
-      ) &&
-      exportBody.includes(
-        'CSV出力'
-      )
-    );
-
-
-  if (!success) {
-
-    console.error(
-      'CURRENT URL:',
-      p.url()
-    );
-
-    console.error(
-      'CURRENT TITLE:',
-      await getSafeTitle(p)
-    );
-
-
-    throw new Error(
-      '看護記録書Ⅱの出力条件画面へ移動できませんでした。'
-    );
-  }
-
-
-  console.log(
-    '=== OPEN EXPORT PAGE SUCCESS ==='
-  );
-}
-
-
-  /*
-   * =====================================================
-   * STEP 2
-   * 「看護記録書Ⅱ」のリンクを取得
-   * =====================================================
-   */
-
-  console.log(
-    'Searching 看護記録書Ⅱ link...'
-  );
-
-
-  /*
-   * まずリンクとして探す
-   */
-  let recordLink =
-    p
-      .locator(
-        'a',
-        {
-          hasText:
-            '看護記録書Ⅱ'
-        }
-      )
-      .first();
-
-
-  let linkCount =
-    await recordLink.count();
-
-
-  /*
-   * 見つからなければ
-   * テキストから探す
-   */
-  if (
-    linkCount < 1
-  ) {
-
-    recordLink =
-      p
-        .getByText(
-          '看護記録書Ⅱ',
-          {
-            exact:
-              true
-          }
-        )
-        .first();
-
-
-    linkCount =
-      await recordLink.count();
-  }
-
-
-  if (
-    linkCount < 1
-  ) {
-
-    throw new Error(
-      '「看護記録書Ⅱ」のリンクを検出できませんでした。'
-    );
-  }
-
-
-  /*
-   * hrefをログに確認
-   *
-   * ※値そのものは後から変化する可能性があるので
-   *   コードには固定しない
-   */
-  const href =
-    await recordLink
-      .getAttribute(
-        'href'
-      )
-      .catch(
-        () => null
-      );
-
-
-  console.log(
-    '看護記録書Ⅱ link found:',
-    href
-      ? 'yes'
-      : 'no href'
-  );
-
-
-  /*
-   * =====================================================
-   * STEP 3
-   * 看護記録書Ⅱをクリック
-   * =====================================================
-   */
-
-  console.log(
-    'Clicking 看護記録書Ⅱ...'
-  );
-
-
-  await Promise.all([
-
-    p
-      .waitForLoadState(
-        'domcontentloaded',
-        {
-          timeout:
-            60000
-        }
-      )
-      .catch(() => {}),
-
-    recordLink.click()
-
-  ]);
-
-
-  await p.waitForTimeout(
-    1500
-  );
-
-
-  console.log(
-    'AFTER RECORD2 CLICK URL:',
-    p.url()
-  );
-
-  console.log(
-    'AFTER RECORD2 CLICK TITLE:',
-    await getSafeTitle(p)
-  );
-
-
-  /*
-   * =====================================================
-   * STEP 4
    * 出力条件画面確認
-   * =====================================================
    */
-
   const exportBody =
     await getBodyText(p);
 
@@ -1359,9 +1203,7 @@ async function openExportPage(p) {
     );
 
 
-  if (
-    !exportPageDetected
-  ) {
+  if (!exportPageDetected) {
 
     console.error(
       'CURRENT URL:',
@@ -1436,19 +1278,15 @@ async function setExportDates(
 
 
   /*
-   * 実際の画面では
-   *
-   * 開始:
+   * 開始：
    * 元号 / 年 / 月 / 日
    *
-   * 終了:
+   * 終了：
    * 元号 / 年 / 月 / 日
    *
    * 合計8個
    */
-  if (
-    count < 8
-  ) {
+  if (count < 8) {
 
     throw new Error(
       `訪問日の選択欄を8個検出できませんでした。検出数=${count}`
@@ -1457,7 +1295,8 @@ async function setExportDates(
 
 
   /*
-   * 「令和」が入っているselectを探す
+   * 「令和」が入っている
+   * 最初のselectを探す
    */
   let startIndex =
     -1;
@@ -1498,9 +1337,7 @@ async function setExportDates(
   }
 
 
-  if (
-    startIndex < 0
-  ) {
+  if (startIndex < 0) {
 
     throw new Error(
       '訪問日の「令和」選択欄を検出できませんでした。'
@@ -1563,9 +1400,7 @@ async function setExportDates(
       );
 
 
-    if (
-      !success
-    ) {
+    if (!success) {
 
       const options =
         await target
@@ -1609,7 +1444,7 @@ async function setExportDates(
 async function findCsvButton(p) {
 
   /*
-   * まずボタン
+   * button要素
    */
   const button =
     p
@@ -1669,7 +1504,35 @@ async function findCsvButton(p) {
 
 
   /*
-   * テキスト
+   * input button
+   */
+  const inputButton =
+    p
+      .locator(
+        'input[type="button"][value*="CSV"]'
+      )
+      .last();
+
+
+  if (
+    await inputButton.count() > 0
+  ) {
+
+    if (
+      await inputButton
+        .isVisible()
+        .catch(
+          () => false
+        )
+    ) {
+
+      return inputButton;
+    }
+  }
+
+
+  /*
+   * 最後にテキストで検索
    */
   const text =
     p
@@ -1954,9 +1817,10 @@ app.post(
       }
 
 
-      if (
-        from > to
-      ) {
+      /*
+       * 開始日 > 終了日
+       */
+      if (from > to) {
 
         return res
           .status(400)
@@ -1994,9 +1858,9 @@ app.post(
       /*
        * 2. 各種情報出力
        *    ↓
-       *    看護記録書Ⅱ
+       *    出力対象選択
        *    ↓
-       *    出力条件画面
+       *    看護記録書Ⅱ
        */
       await openExportPage(p);
 
@@ -2018,9 +1882,7 @@ app.post(
         await findCsvButton(p);
 
 
-      if (
-        !csvButton
-      ) {
+      if (!csvButton) {
 
         throw new Error(
           'CSV出力ボタンを検出できませんでした。'
@@ -2034,7 +1896,7 @@ app.post(
 
 
       /*
-       * 5. CSVダウンロード
+       * 5. ダウンロード待機
        */
       const downloadPromise =
         p.waitForEvent(
@@ -2074,9 +1936,7 @@ app.post(
           );
 
 
-      if (
-        failure
-      ) {
+      if (failure) {
 
         throw new Error(
           `CSVダウンロードに失敗しました: ${failure}`
@@ -2088,9 +1948,7 @@ app.post(
         await download.path();
 
 
-      if (
-        !temporaryPath
-      ) {
+      if (!temporaryPath) {
 
         throw new Error(
           'CSVファイルを取得できませんでした。'
@@ -2099,7 +1957,7 @@ app.post(
 
 
       /*
-       * ファイル読込
+       * CSV読込
        */
       const buffer =
         fs.readFileSync(
