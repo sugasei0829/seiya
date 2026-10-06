@@ -799,18 +799,15 @@ async function openServiceSelectionPage(p) {
     '=== OPEN SERVICE SELECTION START ==='
   );
 
-
   /*
-   * ログイン状態を確認
+   * 1. ログイン確認
    */
   await autoLogin(p);
 
 
   /*
-   * すでに訪問看護画面にいる場合
-   *
-   * スクショでは訪問看護画面のURLに
-   * /bizhnc/ が含まれている。
+   * すでに訪問看護システム内なら
+   * そのまま使う
    */
   if (
     /\/bizhnc\//i.test(
@@ -832,15 +829,11 @@ async function openServiceSelectionPage(p) {
 
 
   /*
-   * すでに出力対象選択または
-   * 看護記録書Ⅱ出力画面にいる場合は、
-   * 正しい訪問看護コンテキストか後で確認する。
+   * すでに正しい出力対象選択画面なら
+   * そのまま使う
    */
   if (
     isOutputSelectionUrl(
-      p.url()
-    ) ||
-    isExportUrl(
       p.url()
     )
   ) {
@@ -855,7 +848,7 @@ async function openServiceSelectionPage(p) {
     ) {
 
       console.log(
-        'Already inside correct visiting nursing context'
+        'Already inside correct nursing context'
       );
 
       return;
@@ -864,14 +857,11 @@ async function openServiceSelectionPage(p) {
 
 
   /*
-   * biztopへ戻る
-   *
-   * ここでは出力対象選択へ直接飛ばない。
+   * 2. カイポケTOPへ移動
    */
   console.log(
     'Opening Kaipoke top...'
   );
-
 
   await p.goto(
     'https://r.kaipoke.biz/biztop/',
@@ -884,24 +874,19 @@ async function openServiceSelectionPage(p) {
     }
   );
 
-
   await waitPage(
     p,
     1500
   );
 
 
-  /*
-   * セッション切れ確認
-   */
   if (!(await isLoggedIn(p))) {
 
     console.log(
-      'Session expired while opening biztop'
+      'Session expired. Logging in again...'
     );
 
     await autoLogin(p);
-
 
     await p.goto(
       'https://r.kaipoke.biz/biztop/',
@@ -913,7 +898,6 @@ async function openServiceSelectionPage(p) {
           60000
       }
     );
-
 
     await waitPage(
       p,
@@ -929,223 +913,245 @@ async function openServiceSelectionPage(p) {
 
 
   /*
-   * スクショで確認した実際の動線：
+   * 3. 必ず「レセプト」を探す
    *
-   * biztop
-   * ↓
-   * レセプト
-   * ↓
-   * 事業所一覧
-   *
-   * 状況によっては既に
-   * 事業所一覧画面へ入っていることもある。
+   * biztop上の「訪問看護」という文字は
+   * ここでは絶対にクリックしない。
    */
+  console.log(
+    'Searching レセプト...'
+  );
 
 
-  /*
-   * まず現在の画面に
-   * 「訪問看護」の事業所リンクがあるか探す
-   */
-  let nursingOfficeLink =
+  const receiptCandidates = [
+
     p.locator(
       'a'
     ).filter({
       hasText:
-        '訪問看護'
-    });
+        'レセプト'
+    }),
+
+    p.getByText(
+      'レセプト',
+      {
+        exact:
+          true
+      }
+    )
+
+  ];
 
 
-  let nursingCount =
-    await nursingOfficeLink.count();
+  let receiptLink =
+    null;
 
 
-  console.log(
-    'Visiting nursing link count on current page:',
-    nursingCount
-  );
+  for (
+    const candidate
+    of receiptCandidates
+  ) {
+
+    const count =
+      await candidate
+        .count()
+        .catch(
+          () => 0
+        );
+
+
+    for (
+      let i = 0;
+      i < count;
+      i++
+    ) {
+
+      const item =
+        candidate.nth(i);
+
+
+      const visible =
+        await item
+          .isVisible()
+          .catch(
+            () => false
+          );
+
+
+      if (!visible) {
+        continue;
+      }
+
+
+      const href =
+        await item
+          .getAttribute(
+            'href'
+          )
+          .catch(
+            () => ''
+          );
+
+
+      /*
+       * "#"だけのリンクは除外
+       */
+      if (
+        href === '#' ||
+        href === ''
+      ) {
+
+        continue;
+      }
+
+
+      receiptLink =
+        item;
+
+      break;
+    }
+
+
+    if (receiptLink) {
+      break;
+    }
+  }
 
 
   /*
-   * biztopに事業所リンクがない場合、
-   * レセプトへ入る
+   * hrefがない場合は
+   * onclick型の可能性があるので
+   * 表示中の「レセプト」を許可
    */
-  if (nursingCount < 1) {
+  if (!receiptLink) {
 
-    console.log(
-      'Visiting nursing office not found on biztop. Searching レセプト...'
-    );
-
-
-    const receiptCandidates = [
-
-      p.getByRole(
-        'link',
-        {
-          name:
-            /レセプト/
-        }
-      ),
-
-      p.locator(
-        'a'
-      ).filter({
-        hasText:
-          'レセプト'
-      }),
-
+    const fallback =
       p.getByText(
         'レセプト',
         {
           exact:
             true
         }
-      )
-
-    ];
+      );
 
 
-    let receiptLink =
-      null;
+    const count =
+      await fallback
+        .count()
+        .catch(
+          () => 0
+        );
 
 
     for (
-      const candidate
-      of receiptCandidates
+      let i = 0;
+      i < count;
+      i++
     ) {
 
-      const count =
-        await candidate
-          .count()
+      const item =
+        fallback.nth(i);
+
+
+      if (
+        await item
+          .isVisible()
           .catch(
-            () => 0
-          );
-
-
-      if (count < 1) {
-        continue;
-      }
-
-
-      for (
-        let i = 0;
-        i < count;
-        i++
+            () => false
+          )
       ) {
-
-        const item =
-          candidate.nth(i);
-
-
-        const visible =
-          await item
-            .isVisible()
-            .catch(
-              () => false
-            );
-
-
-        if (!visible) {
-          continue;
-        }
-
 
         receiptLink =
           item;
 
         break;
       }
-
-
-      if (receiptLink) {
-        break;
-      }
     }
-
-
-    if (!receiptLink) {
-
-      throw new Error(
-        'カイポケTOPから「レセプト」を検出できませんでした。'
-      );
-    }
-
-
-    console.log(
-      'Clicking レセプト...'
-    );
-
-
-    await clickAndWait(
-      p,
-      receiptLink,
-      1800
-    );
-
-
-    await logCurrentPage(
-      p,
-      'AFTER RECEIPT'
-    );
-
-
-    /*
-     * レセプト画面に入った後、
-     * 訪問看護事業所を探す
-     */
-    nursingOfficeLink =
-      p.locator(
-        'a'
-      ).filter({
-        hasText:
-          '訪問看護'
-      });
-
-
-    nursingCount =
-      await nursingOfficeLink.count();
-
-
-    console.log(
-      'Visiting nursing link count after receipt:',
-      nursingCount
-    );
   }
 
 
-  /*
-   * 訪問看護事業所が見つからない
-   */
-  if (nursingCount < 1) {
+  if (!receiptLink) {
 
     throw new Error(
-      '訪問看護の事業所リンクを検出できませんでした。'
+      'カイポケTOPの「レセプト」を検出できませんでした。'
     );
   }
 
 
+  console.log(
+    'Clicking レセプト...'
+  );
+
+
+  await clickAndWait(
+    p,
+    receiptLink,
+    2000
+  );
+
+
+  await logCurrentPage(
+    p,
+    'AFTER RECEIPT'
+  );
+
+
   /*
-   * 「訪問看護」という文字を含むリンクが
-   * 複数ある可能性がある。
+   * 4. レセプト情報画面確認
    *
-   * hrefに訪問看護システムらしいURLが
-   * 入っているものを優先する。
+   * スクショではここに
+   * 事業所一覧が表示される。
    */
-  let selectedOfficeLink =
+  let receiptBody =
+    await getBodyText(p);
+
+
+  console.log(
+    'Receipt page contains 訪問看護:',
+    receiptBody.includes(
+      '訪問看護'
+    )
+  );
+
+
+  /*
+   * 5. 訪問看護事業所リンクを取得
+   *
+   * 今度はbiztopではなく、
+   * レセプト情報画面の中だけで探す。
+   */
+  const links =
+    p.locator(
+      'a'
+    );
+
+
+  const linkCount =
+    await links.count();
+
+
+  console.log(
+    'Receipt page link count:',
+    linkCount
+  );
+
+
+  let nursingLink =
     null;
 
 
   for (
     let i = 0;
-    i < nursingCount;
+    i < linkCount;
     i++
   ) {
 
-    const candidate =
-      nursingOfficeLink.nth(i);
+    const item =
+      links.nth(i);
 
 
     const visible =
-      await candidate
+      await item
         .isVisible()
         .catch(
           () => false
@@ -1157,8 +1163,33 @@ async function openServiceSelectionPage(p) {
     }
 
 
+    const text =
+      (
+        await item
+          .innerText()
+          .catch(
+            () => ''
+          )
+      )
+        .replace(
+          /\s+/g,
+          ' '
+        )
+        .trim();
+
+
+    if (
+      !text.includes(
+        '訪問看護'
+      )
+    ) {
+
+      continue;
+    }
+
+
     const href =
-      await candidate
+      await item
         .getAttribute(
           'href'
         )
@@ -1167,112 +1198,63 @@ async function openServiceSelectionPage(p) {
         );
 
 
+    /*
+     * #だけのリンクは対象外
+     */
     if (
-      href &&
-      (
-        href.includes(
-          'bizhnc'
-        ) ||
-        href.includes(
-          'conversationContext'
-        ) ||
-        href.includes(
-          'COM020101'
-        )
-      )
+      !href ||
+      href === '#'
     ) {
 
-      selectedOfficeLink =
-        candidate;
-
-      break;
+      continue;
     }
-  }
 
 
-  /*
-   * 条件一致がなければ
-   * 最初の表示中リンク
-   */
-  if (!selectedOfficeLink) {
-
-    for (
-      let i = 0;
-      i < nursingCount;
-      i++
-    ) {
-
-      const candidate =
-        nursingOfficeLink.nth(i);
-
-
-      if (
-        await candidate
-          .isVisible()
-          .catch(
-            () => false
-          )
-      ) {
-
-        selectedOfficeLink =
-          candidate;
-
-        break;
-      }
-    }
-  }
-
-
-  if (!selectedOfficeLink) {
-
-    throw new Error(
-      'クリック可能な訪問看護事業所を検出できませんでした。'
-    );
-  }
-
-
-  /*
-   * URLの中身はログへ出さない。
-   *
-   * conversationContextや
-   * 事業所IDなどを漏らさないため。
-   */
-  const selectedHref =
-    await selectedOfficeLink
-      .getAttribute(
-        'href'
-      )
-      .catch(
-        () => ''
+    const info =
+      safeUrlInfo(
+        href
       );
 
 
-  const selectedInfo =
-    safeUrlInfo(
-      selectedHref
+    console.log(
+      'Visiting nursing candidate path:',
+      info.path
+    );
+
+    console.log(
+      'Candidate has context:',
+      info.hasConversationContext
     );
 
 
-  console.log(
-    'Selected visiting nursing link path:',
-    selectedInfo.path
-  );
+    /*
+     * レセプト画面にある
+     * 実際の事業所リンクを採用
+     */
+    nursingLink =
+      item;
+
+    break;
+  }
+
+
+  if (!nursingLink) {
+
+    throw new Error(
+      'レセプト情報画面から訪問看護事業所のリンクを検出できませんでした。'
+    );
+  }
+
 
   console.log(
-    'Selected link has context:',
-    selectedInfo.hasConversationContext
-  );
-
-
-  console.log(
-    'Clicking visiting nursing office...'
+    'Clicking visiting nursing office from receipt page...'
   );
 
 
   await clickAndWait(
     p,
-    selectedOfficeLink,
-    2000
+    nursingLink,
+    2500
   );
 
 
@@ -1283,46 +1265,41 @@ async function openServiceSelectionPage(p) {
 
 
   /*
-   * スクショで確認した訪問看護画面には
-   *
-   * 台帳管理
-   * 個別帳票
-   * スケジュール管理
-   * 各種情報出力
-   *
-   * が表示される。
+   * 6. 訪問看護システムへ
+   * 入ったことを確認
    */
-  const body =
+  const nursingBody =
     await getBodyText(p);
 
 
-  const looksLikeNursingPage =
+  const isNursingSystem =
     /\/bizhnc\//i.test(
       p.url()
     ) ||
 
     (
-      body.includes(
+      nursingBody.includes(
         '各種情報出力'
       ) &&
-      body.includes(
+      nursingBody.includes(
         'スケジュール管理'
       )
     );
 
 
-  if (!looksLikeNursingPage) {
+  if (!isNursingSystem) {
 
     throw new Error(
-      '訪問看護事業所を選択しましたが、訪問看護画面へ移動できませんでした。'
+      'レセプト情報画面から訪問看護事業所を選択しましたが、訪問看護システムへ移動できませんでした。'
     );
   }
 
 
   console.log(
-    '=== OPEN SERVICE SELECTION SUCCESS ==='
+    '=== VISITING NURSING CONTEXT READY ==='
   );
 }
+
 
 
 /* =========================================================
