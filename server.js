@@ -6,7 +6,9 @@ import fs from 'fs';
    Environment
 ========================================================= */
 
-const PORT = Number(process.env.PORT || 38765);
+const PORT = Number(
+  process.env.PORT || 38765
+);
 
 const SECRET =
   process.env.BRIDGE_SECRET || '';
@@ -21,23 +23,15 @@ const KP_PASS =
   process.env.KAIPOKE_PASSWORD || '';
 
 const PROFILE =
-  process.env.PROFILE_DIR || '/data/kaipoke-profile';
+  process.env.PROFILE_DIR ||
+  '/data/kaipoke-profile';
 
 
-/*
- * カイポケ ログイン画面
- */
 const LOGIN_URL =
   'https://r.kaipoke.biz/kaipokebiz/login/COM020102.do';
 
-
-/*
- * 「各種情報出力 → 出力対象選択」画面
- *
- * conversationContext は固定しません。
- */
-const OUTPUT_SELECTION_URL =
-  'https://r.kaipoke.biz/kaipokebiz/business/various_outputs/HNC096201.do';
+const BIZTOP_URL =
+  'https://r.kaipoke.biz/biztop/';
 
 
 if (!SECRET) {
@@ -51,7 +45,9 @@ if (!SECRET) {
    Express
 ========================================================= */
 
-const app = express();
+const app =
+  express();
+
 
 app.use(
   express.json({
@@ -63,29 +59,39 @@ app.use(
 /*
  * WordPress → Railway 認証
  */
-app.use((req, res, next) => {
+app.use(
+  (req, res, next) => {
 
-  const receivedSecret =
-    req.get('X-Bridge-Secret');
+    const receivedSecret =
+      req.get(
+        'X-Bridge-Secret'
+      );
 
-  if (receivedSecret !== SECRET) {
 
-    return res
-      .status(401)
-      .json({
-        error: 'Unauthorized'
-      });
+    if (
+      receivedSecret !== SECRET
+    ) {
+
+      return res
+        .status(401)
+        .json({
+          error:
+            'Unauthorized'
+        });
+    }
+
+
+    next();
   }
-
-  next();
-});
+);
 
 
 /* =========================================================
    Playwright
 ========================================================= */
 
-let browserContext = null;
+let browserContext =
+  null;
 
 
 async function getContext() {
@@ -99,28 +105,35 @@ async function getContext() {
       }
     );
 
+
     console.log(
       'Starting Chromium...'
     );
 
-    browserContext =
-      await chromium.launchPersistentContext(
-        PROFILE,
-        {
-          headless: true,
-          acceptDownloads: true,
 
-          args: [
-            '--no-sandbox',
-            '--disable-dev-shm-usage'
-          ]
-        }
-      );
+    browserContext =
+      await chromium
+        .launchPersistentContext(
+          PROFILE,
+          {
+            headless: true,
+
+            acceptDownloads:
+              true,
+
+            args: [
+              '--no-sandbox',
+              '--disable-dev-shm-usage'
+            ]
+          }
+        );
+
 
     console.log(
       'Chromium started'
     );
   }
+
 
   return browserContext;
 }
@@ -131,31 +144,47 @@ async function getPage() {
   const context =
     await getContext();
 
+
   const pages =
     context.pages();
 
-  if (pages.length > 0) {
+
+  if (
+    pages.length > 0
+  ) {
+
     return pages[0];
   }
 
-  return await context.newPage();
+
+  return await context
+    .newPage();
 }
 
 
 /* =========================================================
-   Helpers
+   Basic helpers
 ========================================================= */
 
-function isKaipoke(url = '') {
+function isKaipoke(
+  url = ''
+) {
 
   try {
 
     const hostname =
-      new URL(url).hostname;
+      new URL(
+        url
+      ).hostname;
+
 
     return (
-      hostname === 'kaipoke.biz' ||
-      hostname.endsWith('.kaipoke.biz')
+      hostname ===
+        'kaipoke.biz' ||
+
+      hostname.endsWith(
+        '.kaipoke.biz'
+      )
     );
 
   } catch {
@@ -165,39 +194,100 @@ function isKaipoke(url = '') {
 }
 
 
-function isLoginUrl(url = '') {
+function isLoginUrl(
+  url = ''
+) {
 
   return (
     /\/login\/COM020102\.do/i
-      .test(url)
+      .test(
+        url
+      )
   );
 }
 
 
-function isOutputSelectionUrl(url = '') {
+function isOutputSelectionUrl(
+  url = ''
+) {
 
   return (
     /\/business\/various_outputs\/HNC096201\.do/i
-      .test(url)
+      .test(
+        url
+      )
   );
 }
 
 
-function isExportUrl(url = '') {
+function isExportUrl(
+  url = ''
+) {
 
   return (
     /careRecordDocument2Export/i
-      .test(url)
+      .test(
+        url
+      )
   );
 }
 
 
-async function getBodyText(p) {
+function safeUrlInfo(
+  rawUrl = ''
+) {
+
+  try {
+
+    const u =
+      new URL(
+        rawUrl
+      );
+
+
+    return {
+
+      host:
+        u.hostname,
+
+      path:
+        u.pathname,
+
+      hasConversationContext:
+        u.searchParams.has(
+          'conversationContext'
+        )
+
+    };
+
+  } catch {
+
+    return {
+
+      host:
+        '',
+
+      path:
+        '',
+
+      hasConversationContext:
+        false
+
+    };
+  }
+}
+
+
+async function getBodyText(
+  p
+) {
 
   try {
 
     return await p
-      .locator('body')
+      .locator(
+        'body'
+      )
       .innerText();
 
   } catch {
@@ -207,7 +297,9 @@ async function getBodyText(p) {
 }
 
 
-async function getSafeTitle(p) {
+async function getSafeTitle(
+  p
+) {
 
   try {
 
@@ -229,12 +321,167 @@ async function waitPage(
     .waitForLoadState(
       'domcontentloaded',
       {
-        timeout: 30000
+        timeout:
+          30000
       }
     )
-    .catch(() => {});
+    .catch(
+      () => {}
+    );
 
-  await p.waitForTimeout(ms);
+
+  await p
+    .waitForTimeout(
+      ms
+    );
+}
+
+
+async function logCurrentPage(
+  p,
+  label
+) {
+
+  const info =
+    safeUrlInfo(
+      p.url()
+    );
+
+
+  console.log(
+    `${label} HOST:`,
+    info.host
+  );
+
+
+  console.log(
+    `${label} PATH:`,
+    info.path
+  );
+
+
+  console.log(
+    `${label} HAS CONTEXT:`,
+    info
+      .hasConversationContext
+  );
+
+
+  console.log(
+    `${label} TITLE:`,
+    await getSafeTitle(
+      p
+    )
+  );
+}
+
+
+/* =========================================================
+   Navigation helper
+========================================================= */
+
+async function clickAndWait(
+  p,
+  locator,
+  waitMs = 1500
+) {
+
+  const beforeUrl =
+    p.url();
+
+
+  await locator.click();
+
+
+  await p
+    .waitForLoadState(
+      'domcontentloaded',
+      {
+        timeout:
+          30000
+      }
+    )
+    .catch(
+      () => {}
+    );
+
+
+  /*
+   * Kaipoke SSO待機
+   */
+  const startedAt =
+    Date.now();
+
+
+  while (
+    Date.now() -
+      startedAt <
+    15000
+  ) {
+
+    const currentUrl =
+      p.url();
+
+
+    const currentTitle =
+      await getSafeTitle(
+        p
+      );
+
+
+    const body =
+      await getBodyText(
+        p
+      );
+
+
+    const loadingSso =
+
+      /\/common\/sso\.do/i
+        .test(
+          currentUrl
+        )
+
+      ||
+
+      /^Loading/i
+        .test(
+          currentTitle
+        )
+
+      ||
+
+      body.trim() === '';
+
+
+    if (!loadingSso) {
+      break;
+    }
+
+
+    console.log(
+      'Waiting for Kaipoke SSO...'
+    );
+
+
+    await p
+      .waitForTimeout(
+        500
+      );
+  }
+
+
+  await p
+    .waitForTimeout(
+      waitMs
+    );
+
+
+  console.log(
+    'Page changed:',
+    beforeUrl !==
+      p.url()
+  );
 }
 
 
@@ -242,72 +489,105 @@ async function waitPage(
    Login state
 ========================================================= */
 
-async function isLoggedIn(p) {
+async function isLoggedIn(
+  p
+) {
 
   const url =
     p.url();
 
-  if (!isKaipoke(url)) {
+
+  if (
+    !isKaipoke(
+      url
+    )
+  ) {
+
     return false;
   }
 
 
-  if (isLoginUrl(url)) {
+  if (
+    isLoginUrl(
+      url
+    )
+  ) {
+
     return false;
   }
 
 
   const text =
-    await getBodyText(p);
+    await getBodyText(
+      p
+    );
 
 
-  /*
-   * ログインフォーム判定
-   */
   const looksLikeLoginPage =
-    text.includes('法人ID') &&
-    text.includes('ユーザーID') &&
-    text.includes('パスワード') &&
-    text.includes('ログイン');
+
+    text.includes(
+      '法人ID'
+    )
+
+    &&
+
+    text.includes(
+      'ユーザーID'
+    )
+
+    &&
+
+    text.includes(
+      'パスワード'
+    )
+
+    &&
+
+    text.includes(
+      'ログイン'
+    );
 
 
-  if (looksLikeLoginPage) {
+  if (
+    looksLikeLoginPage
+  ) {
+
     return false;
   }
 
 
-  /*
-   * ログアウト表示があれば
-   * 確実にログイン済み
-   */
-  if (text.includes('ログアウト')) {
+  if (
+    text.includes(
+      'ログアウト'
+    )
+  ) {
+
     return true;
   }
 
 
-  /*
-   * Kaipoke内でログイン画面以外なら
-   * ログイン済みとして扱う
-   */
   return true;
 }
 
 
 /* =========================================================
-   Kaipoke Login
+   Kaipoke login
 ========================================================= */
 
-async function autoLogin(p) {
+async function autoLogin(
+  p
+) {
 
   console.log(
     '=== KAIPOKE LOGIN START ==='
   );
 
 
-  /*
-   * すでにログイン済み
-   */
-  if (await isLoggedIn(p)) {
+  if (
+    await isLoggedIn(
+      p
+    )
+  ) {
 
     console.log(
       'Already logged in'
@@ -317,9 +597,6 @@ async function autoLogin(p) {
   }
 
 
-  /*
-   * 環境変数確認
-   */
   if (
     !KP_CORPORATE_ID ||
     !KP_USER_ID ||
@@ -340,33 +617,32 @@ async function autoLogin(p) {
   await p.goto(
     LOGIN_URL,
     {
-      waitUntil: 'domcontentloaded',
-      timeout: 60000
+      waitUntil:
+        'domcontentloaded',
+
+      timeout:
+        60000
     }
   );
 
 
-  await p.waitForTimeout(
-    1000
+  await p
+    .waitForTimeout(
+      1000
+    );
+
+
+  await logCurrentPage(
+    p,
+    'LOGIN'
   );
 
 
-  console.log(
-    'LOGIN URL:',
-    p.url()
-  );
-
-  console.log(
-    'LOGIN TITLE:',
-    await getSafeTitle(p)
-  );
-
-
-  /*
-   * 保存セッションで
-   * ログイン済みになった場合
-   */
-  if (await isLoggedIn(p)) {
+  if (
+    await isLoggedIn(
+      p
+    )
+  ) {
 
     console.log(
       'Logged in by existing session'
@@ -386,7 +662,8 @@ async function autoLogin(p) {
 
 
   const textCount =
-    await textInputs.count();
+    await textInputs
+      .count();
 
 
   console.log(
@@ -395,7 +672,9 @@ async function autoLogin(p) {
   );
 
 
-  if (textCount < 2) {
+  if (
+    textCount < 2
+  ) {
 
     throw new Error(
       `法人ID・ユーザーID入力欄を検出できませんでした。検出数=${textCount}`
@@ -428,11 +707,13 @@ async function autoLogin(p) {
   const passwordInput =
     p.locator(
       'input[type="password"]:visible'
-    ).first();
+    )
+    .first();
 
 
   if (
-    await passwordInput.count() < 1
+    await passwordInput
+      .count() < 1
   ) {
 
     throw new Error(
@@ -441,9 +722,10 @@ async function autoLogin(p) {
   }
 
 
-  await passwordInput.fill(
-    KP_PASS
-  );
+  await passwordInput
+    .fill(
+      KP_PASS
+    );
 
 
   console.log(
@@ -479,12 +761,15 @@ async function autoLogin(p) {
     const candidate =
       p.locator(
         selector
-      ).first();
+      )
+      .first();
 
 
     if (
-      await candidate.count() < 1
+      await candidate
+        .count() < 1
     ) {
+
       continue;
     }
 
@@ -516,7 +801,9 @@ async function autoLogin(p) {
   }
 
 
-  if (!loginButton) {
+  if (
+    !loginButton
+  ) {
 
     throw new Error(
       'カイポケのログインボタンを検出できませんでした。'
@@ -524,10 +811,8 @@ async function autoLogin(p) {
   }
 
 
-  /*
-   * ログイン実行
-   */
-  await loginButton.click();
+  await loginButton
+    .click();
 
 
   await waitPage(
@@ -536,18 +821,19 @@ async function autoLogin(p) {
   );
 
 
-  console.log(
-    'AFTER LOGIN URL:',
-    p.url()
-  );
-
-  console.log(
-    'AFTER LOGIN TITLE:',
-    await getSafeTitle(p)
+  await logCurrentPage(
+    p,
+    'AFTER LOGIN'
   );
 
 
-  if (!(await isLoggedIn(p))) {
+  if (
+    !(
+      await isLoggedIn(
+        p
+      )
+    )
+  ) {
 
     throw new Error(
       'カイポケへのログインに失敗しました。'
@@ -565,328 +851,56 @@ async function autoLogin(p) {
 
 
 /* =========================================================
-   Japanese date
+   Open visiting nursing service
 ========================================================= */
 
-function toJapaneseEra(
-  dateString
+async function openServiceSelectionPage(
+  p
 ) {
-
-  const match =
-    /^(\d{4})-(\d{2})-(\d{2})$/
-      .exec(dateString);
-
-
-  if (!match) {
-
-    throw new Error(
-      '日付の変換に失敗しました。'
-    );
-  }
-
-
-  const year =
-    Number(match[1]);
-
-  const month =
-    Number(match[2]);
-
-  const day =
-    Number(match[3]);
-
-
-  if (year < 2019) {
-
-    throw new Error(
-      '現在の自動取得は令和の日付に対応しています。'
-    );
-  }
-
-
-  return {
-
-    era:
-      '令和',
-
-    year:
-      year - 2018,
-
-    month,
-
-    day
-
-  };
-}
-
-
-/* =========================================================
-   Select helper
-========================================================= */
-
-async function selectCandidate(
-  select,
-  values
-) {
-
-  for (
-    const value
-    of values
-  ) {
-
-    /*
-     * label一致
-     */
-    try {
-
-      await select.selectOption({
-        label:
-          String(value)
-      });
-
-      return true;
-
-    } catch {}
-
-
-    /*
-     * value一致
-     */
-    try {
-
-      await select.selectOption(
-        String(value)
-      );
-
-      return true;
-
-    } catch {}
-  }
-
-
-  return false;
-}
-
-
-/* =========================================================
-   Open output selection page
-========================================================= */
-
-/* =========================================================
-   Kaipoke navigation helpers
-========================================================= */
-
-function safeUrlInfo(rawUrl = '') {
-
-  try {
-
-    const u =
-      new URL(rawUrl);
-
-    return {
-
-      host:
-        u.hostname,
-
-      path:
-        u.pathname,
-
-      hasConversationContext:
-        u.searchParams.has(
-          'conversationContext'
-        )
-
-    };
-
-  } catch {
-
-    return {
-
-      host:
-        '',
-
-      path:
-        '',
-
-      hasConversationContext:
-        false
-
-    };
-  }
-}
-
-
-async function logCurrentPage(
-  p,
-  label
-) {
-
-  const info =
-    safeUrlInfo(
-      p.url()
-    );
-
-  console.log(
-    `${label} HOST:`,
-    info.host
-  );
-
-  console.log(
-    `${label} PATH:`,
-    info.path
-  );
-
-  console.log(
-    `${label} HAS CONTEXT:`,
-    info.hasConversationContext
-  );
-
-  console.log(
-    `${label} TITLE:`,
-    await getSafeTitle(p)
-  );
-}
-
-
-/*
- * リンクをクリックして
- * 画面遷移を待つ
- */
-
-async function clickAndWait(
-  p,
-  locator,
-  waitMs = 1500
-) {
-
-  const beforeUrl =
-    p.url();
-
-  await locator.click();
-
-  /*
-   * 通常のページ遷移を待つ
-   */
-  await p
-    .waitForLoadState(
-      'domcontentloaded',
-      {
-        timeout:
-          30000
-      }
-    )
-    .catch(() => {});
-
-
-  /*
-   * カイポケはSSO中継ページを通ることがある。
-   *
-   * Loading...
-   * /common/sso.do
-   *
-   * 等が終わるまで待つ。
-   */
-  const startedAt =
-    Date.now();
-
-  while (
-    Date.now() - startedAt <
-    15000
-  ) {
-
-    const currentUrl =
-      p.url();
-
-    const currentTitle =
-      await getSafeTitle(p);
-
-    const body =
-      await getBodyText(p);
-
-
-    const loadingSso =
-      /\/common\/sso\.do/i.test(
-        currentUrl
-      ) ||
-
-      /^Loading/i.test(
-        currentTitle
-      ) ||
-
-      body.trim() === '';
-
-
-    if (!loadingSso) {
-      break;
-    }
-
-
-    console.log(
-      'Waiting for Kaipoke SSO...'
-    );
-
-
-    await p.waitForTimeout(
-      500
-    );
-  }
-
-
-  /*
-   * SSO後のJavaScript描画待ち
-   */
-  await p.waitForTimeout(
-    waitMs
-  );
-
-
-  console.log(
-    'Page changed:',
-    beforeUrl !== p.url()
-  );
-}
-
-/* =========================================================
-   Open Kaipoke service selection page
-========================================================= */
-
-async function openServiceSelectionPage(p) {
 
   console.log(
     '=== OPEN SERVICE SELECTION START ==='
   );
 
-  /*
-   * 1. ログイン確認
-   */
-  await autoLogin(p);
+
+  await autoLogin(
+    p
+  );
 
 
   /*
-   * すでに訪問看護システム内なら
-   * そのまま使う
+   * すでに訪問看護システム内
    */
   if (
-    /\/bizhnc\//i.test(
-      p.url()
-    )
+    /\/bizhnc\//i
+      .test(
+        p.url()
+      )
   ) {
 
     console.log(
       'Already inside visiting nursing service'
     );
 
+
     await logCurrentPage(
       p,
       'NURSING'
     );
+
+
+    console.log(
+      '=== VISITING NURSING CONTEXT READY ==='
+    );
+
 
     return;
   }
 
 
   /*
-   * すでに正しい出力対象選択画面なら
-   * そのまま使う
+   * すでに正しい
+   * 出力対象選択画面
    */
   if (
     isOutputSelectionUrl(
@@ -895,7 +909,10 @@ async function openServiceSelectionPage(p) {
   ) {
 
     const body =
-      await getBodyText(p);
+      await getBodyText(
+        p
+      );
+
 
     if (
       body.includes(
@@ -907,20 +924,27 @@ async function openServiceSelectionPage(p) {
         'Already inside correct nursing context'
       );
 
+
+      console.log(
+        '=== VISITING NURSING CONTEXT READY ==='
+      );
+
+
       return;
     }
   }
 
 
   /*
-   * 2. カイポケTOPへ移動
+   * カイポケTOP
    */
   console.log(
     'Opening Kaipoke top...'
   );
 
+
   await p.goto(
-    'https://r.kaipoke.biz/biztop/',
+    BIZTOP_URL,
     {
       waitUntil:
         'domcontentloaded',
@@ -930,22 +954,33 @@ async function openServiceSelectionPage(p) {
     }
   );
 
+
   await waitPage(
     p,
     1500
   );
 
 
-  if (!(await isLoggedIn(p))) {
+  if (
+    !(
+      await isLoggedIn(
+        p
+      )
+    )
+  ) {
 
     console.log(
       'Session expired. Logging in again...'
     );
 
-    await autoLogin(p);
+
+    await autoLogin(
+      p
+    );
+
 
     await p.goto(
-      'https://r.kaipoke.biz/biztop/',
+      BIZTOP_URL,
       {
         waitUntil:
           'domcontentloaded',
@@ -954,6 +989,7 @@ async function openServiceSelectionPage(p) {
           60000
       }
     );
+
 
     await waitPage(
       p,
@@ -969,10 +1005,7 @@ async function openServiceSelectionPage(p) {
 
 
   /*
-   * 3. 必ず「レセプト」を探す
-   *
-   * biztop上の「訪問看護」という文字は
-   * ここでは絶対にクリックしない。
+   * レセプトを探す
    */
   console.log(
     'Searching レセプト...'
@@ -1023,7 +1056,9 @@ async function openServiceSelectionPage(p) {
     ) {
 
       const item =
-        candidate.nth(i);
+        candidate.nth(
+          i
+        );
 
 
       const visible =
@@ -1050,36 +1085,36 @@ async function openServiceSelectionPage(p) {
 
 
       /*
-       * "#"だけのリンクは除外
+       * 通常リンクを優先
        */
       if (
-        href === '#' ||
-        href === ''
+        href &&
+        href !== '#'
       ) {
 
-        continue;
+        receiptLink =
+          item;
+
+        break;
       }
-
-
-      receiptLink =
-        item;
-
-      break;
     }
 
 
-    if (receiptLink) {
+    if (
+      receiptLink
+    ) {
+
       break;
     }
   }
 
 
   /*
-   * hrefがない場合は
-   * onclick型の可能性があるので
-   * 表示中の「レセプト」を許可
+   * onclick型などへのfallback
    */
-  if (!receiptLink) {
+  if (
+    !receiptLink
+  ) {
 
     const fallback =
       p.getByText(
@@ -1106,7 +1141,9 @@ async function openServiceSelectionPage(p) {
     ) {
 
       const item =
-        fallback.nth(i);
+        fallback.nth(
+          i
+        );
 
 
       if (
@@ -1126,7 +1163,9 @@ async function openServiceSelectionPage(p) {
   }
 
 
-  if (!receiptLink) {
+  if (
+    !receiptLink
+  ) {
 
     throw new Error(
       'カイポケTOPの「レセプト」を検出できませんでした。'
@@ -1139,11 +1178,11 @@ async function openServiceSelectionPage(p) {
   );
 
 
-await clickAndWait(
-  p,
-  receiptLink,
-  3000
-);
+  await clickAndWait(
+    p,
+    receiptLink,
+    3000
+  );
 
 
   await logCurrentPage(
@@ -1152,14 +1191,10 @@ await clickAndWait(
   );
 
 
-  /*
-   * 4. レセプト情報画面確認
-   *
-   * スクショではここに
-   * 事業所一覧が表示される。
-   */
-  let receiptBody =
-    await getBodyText(p);
+  const receiptBody =
+    await getBodyText(
+      p
+    );
 
 
   console.log(
@@ -1170,13 +1205,20 @@ await clickAndWait(
   );
 
 
+  if (
+    !receiptBody.includes(
+      '訪問看護'
+    )
+  ) {
+
+    throw new Error(
+      'レセプト情報画面に「訪問看護」が表示されませんでした。'
+    );
+  }
+
+
   /*
-   * 5. レセプト情報画面から
    * 訪問看護事業所を探す
-   *
-   * カイポケは href ではなく
-   * onclick / JavaScript で遷移する場合があるため
-   * href必須にはしない。
    */
   console.log(
     'Searching visiting nursing office on receipt page...'
@@ -1189,7 +1231,7 @@ await clickAndWait(
     );
 
 
-  const nursingCandidateCount =
+  const nursingCount =
     await nursingCandidates
       .count()
       .catch(
@@ -1199,7 +1241,7 @@ await clickAndWait(
 
   console.log(
     'Visiting nursing text candidate count:',
-    nursingCandidateCount
+    nursingCount
   );
 
 
@@ -1209,12 +1251,15 @@ await clickAndWait(
 
   for (
     let i = 0;
-    i < nursingCandidateCount;
+    i < nursingCount;
     i++
   ) {
 
     const candidate =
-      nursingCandidates.nth(i);
+      nursingCandidates
+        .nth(
+          i
+        );
 
 
     const visible =
@@ -1230,33 +1275,6 @@ await clickAndWait(
     }
 
 
-    const text =
-      (
-        await candidate
-          .innerText()
-          .catch(
-            () => ''
-          )
-      )
-        .replace(
-          /\s+/g,
-          ' '
-        )
-        .trim();
-
-
-    /*
-     * ログには事業所名そのものを出さない
-     */
-    console.log(
-      'Found visible visiting nursing candidate:',
-      Boolean(text)
-    );
-
-
-    /*
-     * まず本人がクリック可能か確認
-     */
     const tagName =
       await candidate
         .evaluate(
@@ -1266,12 +1284,6 @@ await clickAndWait(
         .catch(
           () => ''
         );
-
-
-    console.log(
-      'Candidate tag:',
-      tagName
-    );
 
 
     if (
@@ -1287,13 +1299,14 @@ await clickAndWait(
 
 
     /*
-     * テキスト自身がspan等の場合、
-     * 一番近いクリック可能な親を探す
+     * 親a / button
      */
     const clickableParent =
-      candidate.locator(
-        'xpath=ancestor-or-self::a | ancestor-or-self::button'
-      ).first();
+      candidate
+        .locator(
+          'xpath=ancestor-or-self::a | ancestor-or-self::button'
+        )
+        .first();
 
 
     if (
@@ -1321,12 +1334,14 @@ await clickAndWait(
 
 
     /*
-     * onclickが付いた親要素も確認
+     * onclick親
      */
     const onclickParent =
-      candidate.locator(
-        'xpath=ancestor-or-self::*[@onclick]'
-      ).first();
+      candidate
+        .locator(
+          'xpath=ancestor-or-self::*[@onclick]'
+        )
+        .first();
 
 
     if (
@@ -1355,10 +1370,11 @@ await clickAndWait(
 
 
   /*
-   * getByTextで見つからなかった場合は
-   * aタグを直接再検索
+   * aタグ直接検索
    */
-  if (!nursingLink) {
+  if (
+    !nursingLink
+  ) {
 
     console.log(
       'Trying direct anchor search...'
@@ -1372,7 +1388,8 @@ await clickAndWait(
 
 
     const directCount =
-      await directLinks.count();
+      await directLinks
+        .count();
 
 
     for (
@@ -1382,15 +1399,20 @@ await clickAndWait(
     ) {
 
       const item =
-        directLinks.nth(i);
+        directLinks
+          .nth(
+            i
+          );
 
 
       if (
-        !(await item
-          .isVisible()
-          .catch(
-            () => false
-          ))
+        !(
+          await item
+            .isVisible()
+            .catch(
+              () => false
+            )
+        )
       ) {
 
         continue;
@@ -1427,19 +1449,19 @@ await clickAndWait(
   }
 
 
-  if (!nursingLink) {
+  if (
+    !nursingLink
+  ) {
 
     throw new Error(
-      'レセプト情報画面に「訪問看護」は表示されていますが、クリック可能な事業所要素を検出できませんでした。'
+      'レセプト情報画面から訪問看護事業所のリンクを検出できませんでした。'
     );
   }
 
 
   /*
-   * 遷移方式を確認
-   *
-   * URLやonclickの中身そのものは
-   * ID等を含む可能性があるのでログには出さない。
+   * 中身はログへ出さず
+   * 有無だけ確認
    */
   const nursingHref =
     await nursingLink
@@ -1477,7 +1499,6 @@ await clickAndWait(
   );
 
 
-
   console.log(
     'Clicking visiting nursing office from receipt page...'
   );
@@ -1497,32 +1518,42 @@ await clickAndWait(
 
 
   /*
-   * 6. 訪問看護システムへ
-   * 入ったことを確認
+   * 訪問看護システム確認
    */
   const nursingBody =
-    await getBodyText(p);
+    await getBodyText(
+      p
+    );
 
 
   const isNursingSystem =
-    /\/bizhnc\//i.test(
-      p.url()
-    ) ||
+
+    /\/bizhnc\//i
+      .test(
+        p.url()
+      )
+
+    ||
 
     (
       nursingBody.includes(
         '各種情報出力'
-      ) &&
+      )
+
+      &&
+
       nursingBody.includes(
-        'スケジュール管理'
+        'スケジュール'
       )
     );
 
 
-  if (!isNursingSystem) {
+  if (
+    !isNursingSystem
+  ) {
 
     throw new Error(
-      'レセプト情報画面から訪問看護事業所を選択しましたが、訪問看護システムへ移動できませんでした。'
+      '訪問看護事業所を選択しましたが、訪問看護システムへ移動できませんでした。'
     );
   }
 
@@ -1533,12 +1564,13 @@ await clickAndWait(
 }
 
 
-
 /* =========================================================
    Open output selection page
 ========================================================= */
 
-async function openOutputSelectionPage(p) {
+async function openOutputSelectionPage(
+  p
+) {
 
   console.log(
     '=== OPEN OUTPUT SELECTION START ==='
@@ -1546,9 +1578,7 @@ async function openOutputSelectionPage(p) {
 
 
   /*
-   * まず訪問看護の事業所コンテキストを作る。
-   *
-   * ここが今回の重要な修正点。
+   * 訪問看護コンテキストを作る
    */
   await openServiceSelectionPage(
     p
@@ -1556,8 +1586,7 @@ async function openOutputSelectionPage(p) {
 
 
   /*
-   * すでに正しい出力対象選択画面なら
-   * そのまま利用する。
+   * すでに正しいページなら終了
    */
   if (
     isOutputSelectionUrl(
@@ -1566,7 +1595,9 @@ async function openOutputSelectionPage(p) {
   ) {
 
     const currentBody =
-      await getBodyText(p);
+      await getBodyText(
+        p
+      );
 
 
     if (
@@ -1579,22 +1610,26 @@ async function openOutputSelectionPage(p) {
         'Already on correct output selection page'
       );
 
+
+      console.log(
+        '=== OPEN OUTPUT SELECTION SUCCESS ==='
+      );
+
+
       return;
     }
   }
 
 
   /*
-   * 「各種情報出力」を探す。
-   *
-   * スクショでは上部ナビゲーションに存在。
+   * 各種情報出力
    */
   console.log(
     'Searching 各種情報出力...'
   );
 
 
-  const outputMenuCandidates = [
+  const outputCandidates = [
 
     p.getByText(
       '各種情報出力',
@@ -1620,7 +1655,7 @@ async function openOutputSelectionPage(p) {
 
   for (
     const candidate
-    of outputMenuCandidates
+    of outputCandidates
   ) {
 
     const count =
@@ -1631,11 +1666,6 @@ async function openOutputSelectionPage(p) {
         );
 
 
-    if (count < 1) {
-      continue;
-    }
-
-
     for (
       let i = 0;
       i < count;
@@ -1643,7 +1673,9 @@ async function openOutputSelectionPage(p) {
     ) {
 
       const item =
-        candidate.nth(i);
+        candidate.nth(
+          i
+        );
 
 
       if (
@@ -1662,13 +1694,18 @@ async function openOutputSelectionPage(p) {
     }
 
 
-    if (outputMenu) {
+    if (
+      outputMenu
+    ) {
+
       break;
     }
   }
 
 
-  if (!outputMenu) {
+  if (
+    !outputMenu
+  ) {
 
     throw new Error(
       '訪問看護画面の「各種情報出力」を検出できませんでした。'
@@ -1677,25 +1714,25 @@ async function openOutputSelectionPage(p) {
 
 
   /*
-   * スクショでは
-   * 各種情報出力にマウスを乗せると
-   * 「出力対象選択」が表示される。
+   * hover
    */
   console.log(
     'Hovering 各種情報出力...'
   );
 
 
-  await outputMenu.hover();
+  await outputMenu
+    .hover();
 
 
-  await p.waitForTimeout(
-    700
-  );
+  await p
+    .waitForTimeout(
+      700
+    );
 
 
   /*
-   * 出力対象選択を探す
+   * 出力対象選択
    */
   const selectionCandidates = [
 
@@ -1734,11 +1771,6 @@ async function openOutputSelectionPage(p) {
         );
 
 
-    if (count < 1) {
-      continue;
-    }
-
-
     for (
       let i = 0;
       i < count;
@@ -1746,7 +1778,9 @@ async function openOutputSelectionPage(p) {
     ) {
 
       const item =
-        candidate.nth(i);
+        candidate.nth(
+          i
+        );
 
 
       if (
@@ -1765,30 +1799,35 @@ async function openOutputSelectionPage(p) {
     }
 
 
-    if (selectionLink) {
+    if (
+      selectionLink
+    ) {
+
       break;
     }
   }
 
 
   /*
-   * hoverで出ない場合、
-   * 各種情報出力自体をクリックして
-   * 再検索する。
+   * hoverで出なければclick
    */
-  if (!selectionLink) {
+  if (
+    !selectionLink
+  ) {
 
     console.log(
       'Output submenu not visible after hover. Trying click...'
     );
 
 
-    await outputMenu.click();
+    await outputMenu
+      .click();
 
 
-    await p.waitForTimeout(
-      700
-    );
+    await p
+      .waitForTimeout(
+        700
+      );
 
 
     const retry =
@@ -1816,7 +1855,9 @@ async function openOutputSelectionPage(p) {
     ) {
 
       const item =
-        retry.nth(i);
+        retry.nth(
+          i
+        );
 
 
       if (
@@ -1836,7 +1877,9 @@ async function openOutputSelectionPage(p) {
   }
 
 
-  if (!selectionLink) {
+  if (
+    !selectionLink
+  ) {
 
     throw new Error(
       '「各種情報出力」メニュー内の「出力対象選択」を検出できませんでした。'
@@ -1845,10 +1888,7 @@ async function openOutputSelectionPage(p) {
 
 
   /*
-   * 出力対象選択リンクに
-   * conversationContextが含まれているかだけ確認。
-   *
-   * 値自体はログへ出さない。
+   * context有無のみログ
    */
   const href =
     await selectionLink
@@ -1871,18 +1911,14 @@ async function openOutputSelectionPage(p) {
     hrefInfo.path
   );
 
+
   console.log(
     'Output selection link has context:',
-    hrefInfo.hasConversationContext
+    hrefInfo
+      .hasConversationContext
   );
 
 
-  /*
-   * 人間と同じようにクリックする。
-   *
-   * OUTPUT_SELECTION_URLへの
-   * 直接gotoはしない。
-   */
   console.log(
     'Clicking 出力対象選択...'
   );
@@ -1901,11 +1937,10 @@ async function openOutputSelectionPage(p) {
   );
 
 
-  /*
-   * 正しいページか確認
-   */
   const body =
-    await getBodyText(p);
+    await getBodyText(
+      p
+    );
 
 
   console.log(
@@ -1930,69 +1965,8 @@ async function openOutputSelectionPage(p) {
     )
   ) {
 
-    /*
-     * デバッグ用。
-     *
-     * 患者情報やURLパラメータは
-     * ログに出さない。
-     */
-    const nursingLinks =
-      await p
-        .locator(
-          'a'
-        )
-        .evaluateAll(
-          elements =>
-            elements
-              .map(
-                el => ({
-                  text:
-                    (
-                      el.innerText ||
-                      ''
-                    ).trim(),
-
-                  path:
-                    (() => {
-
-                      try {
-
-                        return new URL(
-                          el.href
-                        ).pathname;
-
-                      } catch {
-
-                        return '';
-                      }
-
-                    })()
-                })
-              )
-              .filter(
-                item =>
-                  item.text.includes(
-                    '看護記録'
-                  )
-              )
-              .slice(
-                0,
-                10
-              )
-        )
-        .catch(
-          () => []
-        );
-
-
-    console.log(
-      'NURSING RECORD LINK COUNT:',
-      nursingLinks.length
-    );
-
-
     throw new Error(
-      '訪問看護の事業所を選択して出力対象選択へ進みましたが、「看護記録書Ⅱ」が表示されませんでした。'
+      '訪問看護の出力対象選択画面まで進みましたが、「看護記録書Ⅱ」が表示されませんでした。'
     );
   }
 
@@ -2002,10 +1976,14 @@ async function openOutputSelectionPage(p) {
   );
 }
 
+
 /* =========================================================
    Click 看護記録書Ⅱ
 ========================================================= */
-async function clickRecord2(p) {
+
+async function clickRecord2(
+  p
+) {
 
   console.log(
     '=== CLICK 看護記録書Ⅱ START ==='
@@ -2013,12 +1991,10 @@ async function clickRecord2(p) {
 
 
   /*
-   * ページ内には
-   * 非表示メニュー側と
-   * 実際の個別帳票データ側の
-   * 「看護記録書Ⅱ」が存在する。
+   * 同名リンクが複数ある可能性がある。
    *
-   * 必ず visible のものを選択する。
+   * 非表示メニューではなく
+   * visibleのものだけを使用。
    */
   const candidates =
     p.locator(
@@ -2030,7 +2006,8 @@ async function clickRecord2(p) {
 
 
   const count =
-    await candidates.count();
+    await candidates
+      .count();
 
 
   console.log(
@@ -2050,7 +2027,9 @@ async function clickRecord2(p) {
   ) {
 
     const candidate =
-      candidates.nth(i);
+      candidates.nth(
+        i
+      );
 
 
     const visible =
@@ -2080,9 +2059,11 @@ async function clickRecord2(p) {
 
 
   /*
-   * aタグで見つからなかった場合
+   * aタグで見つからない場合
    */
-  if (!recordLink) {
+  if (
+    !recordLink
+  ) {
 
     const textCandidates =
       p.getByText(
@@ -2095,7 +2076,14 @@ async function clickRecord2(p) {
 
 
     const textCount =
-      await textCandidates.count();
+      await textCandidates
+        .count();
+
+
+    console.log(
+      '看護記録書Ⅱ text candidate count:',
+      textCount
+    );
 
 
     for (
@@ -2105,15 +2093,39 @@ async function clickRecord2(p) {
     ) {
 
       const candidate =
-        textCandidates.nth(i);
+        textCandidates
+          .nth(
+            i
+          );
 
 
       if (
+        !(
+          await candidate
+            .isVisible()
+            .catch(
+              () => false
+            )
+        )
+      ) {
+
+        continue;
+      }
+
+
+      const tagName =
         await candidate
-          .isVisible()
-          .catch(
-            () => false
+          .evaluate(
+            el =>
+              el.tagName
           )
+          .catch(
+            () => ''
+          );
+
+
+      if (
+        tagName === 'A'
       ) {
 
         recordLink =
@@ -2121,11 +2133,45 @@ async function clickRecord2(p) {
 
         break;
       }
+
+
+      const parentLink =
+        candidate
+          .locator(
+            'xpath=ancestor-or-self::a'
+          )
+          .first();
+
+
+      if (
+        await parentLink
+          .count()
+          .catch(
+            () => 0
+          ) > 0
+      ) {
+
+        if (
+          await parentLink
+            .isVisible()
+            .catch(
+              () => false
+            )
+        ) {
+
+          recordLink =
+            parentLink;
+
+          break;
+        }
+      }
     }
   }
 
 
-  if (!recordLink) {
+  if (
+    !recordLink
+  ) {
 
     throw new Error(
       '表示中の「看護記録書Ⅱ」リンクを検出できませんでした。'
@@ -2134,8 +2180,8 @@ async function clickRecord2(p) {
 
 
   /*
-   * href / onclick の有無だけ確認。
-   * 中身はログに出さない。
+   * href / onclickの
+   * 有無だけ確認
    */
   const href =
     await recordLink
@@ -2159,19 +2205,20 @@ async function clickRecord2(p) {
 
   console.log(
     'Visible 看護記録書Ⅱ has href:',
-    Boolean(href)
+    Boolean(
+      href
+    )
   );
 
 
   console.log(
     'Visible 看護記録書Ⅱ has onclick:',
-    Boolean(onclick)
+    Boolean(
+      onclick
+    )
   );
 
 
-  /*
-   * 実際にクリック
-   */
   console.log(
     'Clicking visible 看護記録書Ⅱ...'
   );
@@ -2184,36 +2231,176 @@ async function clickRecord2(p) {
   );
 
 
+  await logCurrentPage(
+    p,
+    'AFTER RECORD2 CLICK'
+  );
+
+
+  const body =
+    await getBodyText(
+      p
+    );
+
+
+  const looksLikeExportPage =
+
+    isExportUrl(
+      p.url()
+    )
+
+    ||
+
+    (
+      body.includes(
+        '看護記録書Ⅱ'
+      )
+
+      &&
+
+      (
+        body.includes(
+          'CSV出力'
+        )
+
+        ||
+
+        body.includes(
+          '出力条件'
+        )
+      )
+    );
+
+
   console.log(
-    'AFTER RECORD2 CLICK PATH:',
+    'Export page detected:',
+    looksLikeExportPage
+  );
+
+
+  if (
+    !looksLikeExportPage
+  ) {
+
+    throw new Error(
+      '「看護記録書Ⅱ」をクリックしましたが、出力条件設定画面へ移動できませんでした。'
+    );
+  }
+
+
+  console.log(
+    '=== CLICK 看護記録書Ⅱ SUCCESS ==='
+  );
+}
+
+
+/* =========================================================
+   Open 看護記録書Ⅱ export page
+========================================================= */
+
+async function openExportPage(
+  p
+) {
+
+  console.log(
+    '=== OPEN EXPORT PAGE START ==='
+  );
+
+
+  console.log(
+    'START PATH:',
     safeUrlInfo(
       p.url()
     ).path
   );
 
 
-  console.log(
-    'AFTER RECORD2 CLICK HAS CONTEXT:',
-    safeUrlInfo(
+  /*
+   * すでに出力条件画面
+   */
+  if (
+    isExportUrl(
       p.url()
-    ).hasConversationContext
-  );
+    )
+  ) {
 
+    console.log(
+      'Already on export page'
+    );
 
-  console.log(
-    'AFTER RECORD2 CLICK TITLE:',
-    await getSafeTitle(p)
-  );
-
-
-  const body =
-    await getBodyText(p);
+    return;
+  }
 
 
   /*
-   * 出力条件設定画面確認
+   * URLではなく画面内容でも確認
    */
-  const looksLikeExportPage =
+  const initialBody =
+    await getBodyText(
+      p
+    );
+
+
+  if (
+    initialBody.includes(
+      '看護記録書Ⅱ'
+    )
+
+    &&
+
+    initialBody.includes(
+      'CSV出力'
+    )
+  ) {
+
+    console.log(
+      'Already on export page by body detection'
+    );
+
+    return;
+  }
+
+
+  /*
+   * 1. ログイン
+   */
+  await autoLogin(
+    p
+  );
+
+
+  /*
+   * 2.
+   * 訪問看護
+   * ↓
+   * 各種情報出力
+   * ↓
+   * 出力対象選択
+   */
+  await openOutputSelectionPage(
+    p
+  );
+
+
+  /*
+   * 3.
+   * 看護記録書Ⅱ
+   */
+  await clickRecord2(
+    p
+  );
+
+
+  /*
+   * 最終確認
+   */
+  const body =
+    await getBodyText(
+      p
+    );
+
+
+  const exportReady =
 
     isExportUrl(
       p.url()
@@ -2235,23 +2422,146 @@ async function clickRecord2(p) {
 
 
   console.log(
-    'Export page detected:',
-    looksLikeExportPage
+    'EXPORT PAGE READY:',
+    exportReady
   );
 
 
-  if (!looksLikeExportPage) {
+  if (
+    !exportReady
+  ) {
 
     throw new Error(
-      '「看護記録書Ⅱ」をクリックしましたが、出力条件設定画面へ移動できませんでした。'
+      '看護記録書Ⅱの出力条件画面まで移動できませんでした。'
     );
   }
 
 
   console.log(
-    '=== CLICK 看護記録書Ⅱ SUCCESS ==='
+    '=== OPEN EXPORT PAGE SUCCESS ==='
   );
 }
+
+
+/* =========================================================
+   Japanese date
+========================================================= */
+
+function toJapaneseEra(
+  dateString
+) {
+
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})$/
+      .exec(
+        dateString
+      );
+
+
+  if (
+    !match
+  ) {
+
+    throw new Error(
+      '日付の変換に失敗しました。'
+    );
+  }
+
+
+  const year =
+    Number(
+      match[1]
+    );
+
+
+  const month =
+    Number(
+      match[2]
+    );
+
+
+  const day =
+    Number(
+      match[3]
+    );
+
+
+  if (
+    year < 2019
+  ) {
+
+    throw new Error(
+      '現在の自動取得は令和の日付に対応しています。'
+    );
+  }
+
+
+  return {
+
+    era:
+      '令和',
+
+    year:
+      year - 2018,
+
+    month,
+
+    day
+
+  };
+}
+
+
+/* =========================================================
+   Select helper
+========================================================= */
+
+async function selectCandidate(
+  select,
+  values
+) {
+
+  for (
+    const value
+    of values
+  ) {
+
+    try {
+
+      await select
+        .selectOption({
+          label:
+            String(
+              value
+            )
+        });
+
+
+      return true;
+
+    } catch {}
+
+
+    try {
+
+      await select
+        .selectOption(
+          String(
+            value
+          )
+        );
+
+
+      return true;
+
+    } catch {}
+  }
+
+
+  return false;
+}
+
+
 /* =========================================================
    Set export dates
 ========================================================= */
@@ -2280,6 +2590,7 @@ async function setExportDates(
       from
     );
 
+
   const endDate =
     toJapaneseEra(
       to
@@ -2293,7 +2604,8 @@ async function setExportDates(
 
 
   const count =
-    await selects.count();
+    await selects
+      .count();
 
 
   console.log(
@@ -2303,8 +2615,7 @@ async function setExportDates(
 
 
   /*
-   * 全selectのoptionを確認して
-   * 最初の「令和」を探す
+   * 最初の「令和」selectを探す
    */
   let startIndex =
     -1;
@@ -2318,7 +2629,9 @@ async function setExportDates(
 
     const options =
       await selects
-        .nth(i)
+        .nth(
+          i
+        )
         .locator(
           'option'
         )
@@ -2329,7 +2642,9 @@ async function setExportDates(
 
 
     const optionText =
-      options.join('|');
+      options.join(
+        '|'
+      );
 
 
     if (
@@ -2346,18 +2661,22 @@ async function setExportDates(
   }
 
 
-  if (startIndex < 0) {
+  /*
+   * 元号selectなし
+   * 年月日 × 2
+   */
+  if (
+    startIndex < 0
+  ) {
 
-    /*
-     * 元号selectが存在しない場合、
-     * 年月日×2の6項目の可能性
-     */
     console.log(
       'Era select not found. Trying 6-select date format.'
     );
 
 
-    if (count < 6) {
+    if (
+      count < 6
+    ) {
 
       throw new Error(
         `訪問日の日付欄を検出できませんでした。select数=${count}`
@@ -2389,7 +2708,9 @@ async function setExportDates(
 
 
       const target =
-        selects.nth(i);
+        selects.nth(
+          i
+        );
 
 
       const success =
@@ -2397,20 +2718,30 @@ async function setExportDates(
           target,
           [
             value,
+
             `${value}年`,
+
             `${value}月`,
+
             `${value}日`,
-            String(value),
-            String(value)
-              .padStart(
-                2,
-                '0'
-              )
+
+            String(
+              value
+            ),
+
+            String(
+              value
+            ).padStart(
+              2,
+              '0'
+            )
           ]
         );
 
 
-      if (!success) {
+      if (
+        !success
+      ) {
 
         throw new Error(
           `日付欄${i + 1}を設定できませんでした。`
@@ -2423,17 +2754,17 @@ async function setExportDates(
       '=== SET EXPORT DATES SUCCESS ==='
     );
 
+
     return;
   }
 
 
   /*
-   * 元号あり
-   *
    * 元号 / 年 / 月 / 日 × 2
    */
   if (
-    count < startIndex + 8
+    count <
+    startIndex + 8
   ) {
 
     throw new Error(
@@ -2474,6 +2805,7 @@ async function setExportDates(
 
 
     const candidates =
+
       i === 0 ||
       i === 4
 
@@ -2482,16 +2814,26 @@ async function setExportDates(
           ]
 
         : [
+
             value,
+
             `${value}年`,
+
             `${value}月`,
+
             `${value}日`,
-            String(value),
-            String(value)
-              .padStart(
-                2,
-                '0'
-              )
+
+            String(
+              value
+            ),
+
+            String(
+              value
+            ).padStart(
+              2,
+              '0'
+            )
+
           ];
 
 
@@ -2502,7 +2844,9 @@ async function setExportDates(
       );
 
 
-    if (!success) {
+    if (
+      !success
+    ) {
 
       const options =
         await target
@@ -2522,7 +2866,9 @@ async function setExportDates(
             0,
             30
           )
-          .join('|')
+          .join(
+            '|'
+          )
       );
 
 
@@ -2543,10 +2889,12 @@ async function setExportDates(
    Find CSV button
 ========================================================= */
 
-async function findCsvButton(p) {
+async function findCsvButton(
+  p
+) {
 
   /*
-   * button
+   * role=button
    */
   const roleButton =
     p.getByRole(
@@ -2555,11 +2903,16 @@ async function findCsvButton(p) {
         name:
           /CSV出力/
       }
-    ).last();
+    )
+    .last();
 
 
   if (
-    await roleButton.count() > 0 &&
+    await roleButton
+      .count() > 0
+
+    &&
+
     await roleButton
       .isVisible()
       .catch(
@@ -2572,16 +2925,21 @@ async function findCsvButton(p) {
 
 
   /*
-   * submit
+   * input submit
    */
   const submitButton =
     p.locator(
       'input[type="submit"][value*="CSV"]'
-    ).last();
+    )
+    .last();
 
 
   if (
-    await submitButton.count() > 0 &&
+    await submitButton
+      .count() > 0
+
+    &&
+
     await submitButton
       .isVisible()
       .catch(
@@ -2599,11 +2957,16 @@ async function findCsvButton(p) {
   const normalButton =
     p.locator(
       'button:has-text("CSV出力")'
-    ).last();
+    )
+    .last();
 
 
   if (
-    await normalButton.count() > 0 &&
+    await normalButton
+      .count() > 0
+
+    &&
+
     await normalButton
       .isVisible()
       .catch(
@@ -2616,7 +2979,7 @@ async function findCsvButton(p) {
 
 
   /*
-   * 最終手段
+   * 最終fallback
    */
   const text =
     p.getByText(
@@ -2625,11 +2988,16 @@ async function findCsvButton(p) {
         exact:
           true
       }
-    ).last();
+    )
+    .last();
 
 
   if (
-    await text.count() > 0 &&
+    await text
+      .count() > 0
+
+    &&
+
     await text
       .isVisible()
       .catch(
@@ -2666,7 +3034,10 @@ app.get(
 
 app.get(
   '/status',
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
 
     try {
 
@@ -2680,7 +3051,9 @@ app.get(
           true,
 
         loggedIn:
-          await isLoggedIn(p),
+          await isLoggedIn(
+            p
+          ),
 
         currentHost:
           (() => {
@@ -2699,7 +3072,6 @@ app.get(
           })()
 
       });
-
 
     } catch (e) {
 
@@ -2729,7 +3101,10 @@ app.get(
 
 app.post(
   '/connect',
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
 
     let p =
       null;
@@ -2747,23 +3122,21 @@ app.post(
 
 
       console.log(
-        'BEFORE LOGIN URL:',
-        p.url()
+        'BEFORE LOGIN PATH:',
+        safeUrlInfo(
+          p.url()
+        ).path
       );
 
 
-      await autoLogin(p);
-
-
-      console.log(
-        'AFTER LOGIN URL:',
-        p.url()
+      await autoLogin(
+        p
       );
 
 
-      console.log(
-        'AFTER LOGIN TITLE:',
-        await getSafeTitle(p)
+      await logCurrentPage(
+        p,
+        'AFTER LOGIN'
       );
 
 
@@ -2785,17 +3158,18 @@ app.post(
 
       });
 
-
     } catch (e) {
 
       console.error(
         '=== CONNECT ERROR ==='
       );
 
+
       console.error(
         'ERROR:',
         e?.message || e
       );
+
 
       console.error(
         '====================='
@@ -2822,7 +3196,10 @@ app.post(
 
 app.post(
   '/export',
-  async (req, res) => {
+  async (
+    req,
+    res
+  ) => {
 
     let p =
       null;
@@ -2844,7 +3221,9 @@ app.post(
         !/^\d{4}-\d{2}-\d{2}$/
           .test(
             from || ''
-          ) ||
+          )
+
+        ||
 
         !/^\d{4}-\d{2}-\d{2}$/
           .test(
@@ -2863,7 +3242,9 @@ app.post(
       }
 
 
-      if (from > to) {
+      if (
+        from > to
+      ) {
 
         return res
           .status(400)
@@ -2894,20 +3275,18 @@ app.post(
 
 
       /*
-       * 1. ログイン
+       * 1.
+       * 看護記録書Ⅱ
+       * 出力条件画面まで移動
        */
-      await autoLogin(p);
+      await openExportPage(
+        p
+      );
 
 
       /*
-       * 2. 出力対象選択
-       * 3. 看護記録書Ⅱ
-       */
-      await openExportPage(p);
-
-
-      /*
-       * 4. 日付設定
+       * 2.
+       * 日付設定
        */
       await setExportDates(
         p,
@@ -2917,13 +3296,18 @@ app.post(
 
 
       /*
-       * 5. CSV出力
+       * 3.
+       * CSV出力ボタン
        */
       const csvButton =
-        await findCsvButton(p);
+        await findCsvButton(
+          p
+        );
 
 
-      if (!csvButton) {
+      if (
+        !csvButton
+      ) {
 
         throw new Error(
           'CSV出力ボタンを検出できませんでした。'
@@ -2937,6 +3321,7 @@ app.post(
 
 
       /*
+       * 4.
        * ダウンロード待機
        */
       const downloadPromise =
@@ -2949,7 +3334,8 @@ app.post(
         );
 
 
-      await csvButton.click();
+      await csvButton
+        .click();
 
 
       console.log(
@@ -2967,7 +3353,8 @@ app.post(
 
 
       /*
-       * ダウンロード失敗確認
+       * 5.
+       * ダウンロード結果
        */
       const failure =
         await download
@@ -2977,7 +3364,9 @@ app.post(
           );
 
 
-      if (failure) {
+      if (
+        failure
+      ) {
 
         throw new Error(
           `CSVダウンロードに失敗しました: ${failure}`
@@ -2986,10 +3375,13 @@ app.post(
 
 
       const temporaryPath =
-        await download.path();
+        await download
+          .path();
 
 
-      if (!temporaryPath) {
+      if (
+        !temporaryPath
+      ) {
 
         throw new Error(
           'CSVファイルを取得できませんでした。'
@@ -3035,7 +3427,9 @@ app.post(
 
         filename:
           download
-            .suggestedFilename() ||
+            .suggestedFilename()
+
+          ||
 
           `看護記録書Ⅱ_${from}-${to}.csv`,
 
@@ -3046,7 +3440,6 @@ app.post(
 
       });
 
-
     } catch (e) {
 
       console.error(
@@ -3054,20 +3447,34 @@ app.post(
       );
 
 
-      console.error(
-        'URL:',
+      if (
         p
-          ? p.url()
-          : ''
-      );
+      ) {
+
+        console.error(
+          'PATH:',
+          safeUrlInfo(
+            p.url()
+          ).path
+        );
 
 
-      console.error(
-        'TITLE:',
-        p
-          ? await getSafeTitle(p)
-          : ''
-      );
+        console.error(
+          'HAS CONTEXT:',
+          safeUrlInfo(
+            p.url()
+          )
+            .hasConversationContext
+        );
+
+
+        console.error(
+          'TITLE:',
+          await getSafeTitle(
+            p
+          )
+        );
+      }
 
 
       console.error(
