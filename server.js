@@ -2011,123 +2011,6 @@ async function clickRecord2(p) {
     '=== CLICK 看護記録書Ⅱ START ==='
   );
 
-   /* =========================================================
-   Open 看護記録書Ⅱ export page
-========================================================= */
-
-async function openExportPage(p) {
-
-  console.log(
-    '=== OPEN EXPORT PAGE START ==='
-  );
-
-
-  console.log(
-    'START PATH:',
-    safeUrlInfo(
-      p.url()
-    ).path
-  );
-
-
-  /*
-   * すでに看護記録書Ⅱの
-   * 出力条件画面にいる場合
-   */
-  if (
-    isExportUrl(
-      p.url()
-    )
-  ) {
-
-    console.log(
-      'Already on export page'
-    );
-
-    return;
-  }
-
-
-  /*
-   * 1. カイポケへログイン
-   */
-  await autoLogin(p);
-
-
-  /*
-   * 2. 訪問看護のコンテキストへ移動
-   *
-   * レセプト
-   * ↓
-   * 訪問看護事業所
-   */
-  await openServiceSelectionPage(p);
-
-
-  /*
-   * 3.
-   * 各種情報出力
-   * ↓
-   * 出力対象選択
-   */
-  await openOutputSelectionPage(p);
-
-
-  /*
-   * 4.
-   * 個別帳票データ
-   * ↓
-   * 看護記録書Ⅱ
-   */
-  await clickRecord2(p);
-
-
-  /*
-   * 最終確認
-   */
-  const body =
-    await getBodyText(p);
-
-
-  const exportReady =
-
-    isExportUrl(
-      p.url()
-    )
-
-    ||
-
-    (
-      body.includes(
-        '看護記録書Ⅱ'
-      )
-
-      &&
-
-      body.includes(
-        'CSV出力'
-      )
-    );
-
-
-  console.log(
-    'EXPORT PAGE READY:',
-    exportReady
-  );
-
-
-  if (!exportReady) {
-
-    throw new Error(
-      '看護記録書Ⅱの出力条件画面まで移動できませんでした。'
-    );
-  }
-
-
-  console.log(
-    '=== OPEN EXPORT PAGE SUCCESS ==='
-  );
-}
 
   /*
    * ページ内には
@@ -2369,7 +2252,6 @@ async function openExportPage(p) {
     '=== CLICK 看護記録書Ⅱ SUCCESS ==='
   );
 }
-
 /* =========================================================
    Set export dates
 ========================================================= */
