@@ -1171,24 +1171,35 @@ await clickAndWait(
 
 
   /*
-   * 5. 訪問看護事業所リンクを取得
+   * 5. レセプト情報画面から
+   * 訪問看護事業所を探す
    *
-   * 今度はbiztopではなく、
-   * レセプト情報画面の中だけで探す。
+   * カイポケは href ではなく
+   * onclick / JavaScript で遷移する場合があるため
+   * href必須にはしない。
    */
-  const links =
-    p.locator(
-      'a'
+  console.log(
+    'Searching visiting nursing office on receipt page...'
+  );
+
+
+  const nursingCandidates =
+    p.getByText(
+      /訪問看護/
     );
 
 
-  const linkCount =
-    await links.count();
+  const nursingCandidateCount =
+    await nursingCandidates
+      .count()
+      .catch(
+        () => 0
+      );
 
 
   console.log(
-    'Receipt page link count:',
-    linkCount
+    'Visiting nursing text candidate count:',
+    nursingCandidateCount
   );
 
 
@@ -1198,16 +1209,16 @@ await clickAndWait(
 
   for (
     let i = 0;
-    i < linkCount;
+    i < nursingCandidateCount;
     i++
   ) {
 
-    const item =
-      links.nth(i);
+    const candidate =
+      nursingCandidates.nth(i);
 
 
     const visible =
-      await item
+      await candidate
         .isVisible()
         .catch(
           () => false
@@ -1221,7 +1232,7 @@ await clickAndWait(
 
     const text =
       (
-        await item
+        await candidate
           .innerText()
           .catch(
             () => ''
@@ -1234,72 +1245,237 @@ await clickAndWait(
         .trim();
 
 
-    if (
-      !text.includes(
-        '訪問看護'
-      )
-    ) {
+    /*
+     * ログには事業所名そのものを出さない
+     */
+    console.log(
+      'Found visible visiting nursing candidate:',
+      Boolean(text)
+    );
 
-      continue;
-    }
 
-
-    const href =
-      await item
-        .getAttribute(
-          'href'
+    /*
+     * まず本人がクリック可能か確認
+     */
+    const tagName =
+      await candidate
+        .evaluate(
+          el =>
+            el.tagName
         )
         .catch(
           () => ''
         );
 
 
-    /*
-     * #だけのリンクは対象外
-     */
+    console.log(
+      'Candidate tag:',
+      tagName
+    );
+
+
     if (
-      !href ||
-      href === '#'
+      tagName === 'A' ||
+      tagName === 'BUTTON'
     ) {
 
-      continue;
+      nursingLink =
+        candidate;
+
+      break;
     }
 
 
-    const info =
-      safeUrlInfo(
-        href
-      );
+    /*
+     * テキスト自身がspan等の場合、
+     * 一番近いクリック可能な親を探す
+     */
+    const clickableParent =
+      candidate.locator(
+        'xpath=ancestor-or-self::a | ancestor-or-self::button'
+      ).first();
 
 
-    console.log(
-      'Visiting nursing candidate path:',
-      info.path
-    );
+    if (
+      await clickableParent
+        .count()
+        .catch(
+          () => 0
+        ) > 0
+    ) {
 
-    console.log(
-      'Candidate has context:',
-      info.hasConversationContext
-    );
+      if (
+        await clickableParent
+          .isVisible()
+          .catch(
+            () => false
+          )
+      ) {
+
+        nursingLink =
+          clickableParent;
+
+        break;
+      }
+    }
 
 
     /*
-     * レセプト画面にある
-     * 実際の事業所リンクを採用
+     * onclickが付いた親要素も確認
      */
-    nursingLink =
-      item;
+    const onclickParent =
+      candidate.locator(
+        'xpath=ancestor-or-self::*[@onclick]'
+      ).first();
 
-    break;
+
+    if (
+      await onclickParent
+        .count()
+        .catch(
+          () => 0
+        ) > 0
+    ) {
+
+      if (
+        await onclickParent
+          .isVisible()
+          .catch(
+            () => false
+          )
+      ) {
+
+        nursingLink =
+          onclickParent;
+
+        break;
+      }
+    }
+  }
+
+
+  /*
+   * getByTextで見つからなかった場合は
+   * aタグを直接再検索
+   */
+  if (!nursingLink) {
+
+    console.log(
+      'Trying direct anchor search...'
+    );
+
+
+    const directLinks =
+      p.locator(
+        'a'
+      );
+
+
+    const directCount =
+      await directLinks.count();
+
+
+    for (
+      let i = 0;
+      i < directCount;
+      i++
+    ) {
+
+      const item =
+        directLinks.nth(i);
+
+
+      if (
+        !(await item
+          .isVisible()
+          .catch(
+            () => false
+          ))
+      ) {
+
+        continue;
+      }
+
+
+      const text =
+        (
+          await item
+            .innerText()
+            .catch(
+              () => ''
+            )
+        )
+          .replace(
+            /\s+/g,
+            ' '
+          )
+          .trim();
+
+
+      if (
+        text.includes(
+          '訪問看護'
+        )
+      ) {
+
+        nursingLink =
+          item;
+
+        break;
+      }
+    }
   }
 
 
   if (!nursingLink) {
 
     throw new Error(
-      'レセプト情報画面から訪問看護事業所のリンクを検出できませんでした。'
+      'レセプト情報画面に「訪問看護」は表示されていますが、クリック可能な事業所要素を検出できませんでした。'
     );
   }
+
+
+  /*
+   * 遷移方式を確認
+   *
+   * URLやonclickの中身そのものは
+   * ID等を含む可能性があるのでログには出さない。
+   */
+  const nursingHref =
+    await nursingLink
+      .getAttribute(
+        'href'
+      )
+      .catch(
+        () => null
+      );
+
+
+  const nursingOnclick =
+    await nursingLink
+      .getAttribute(
+        'onclick'
+      )
+      .catch(
+        () => null
+      );
+
+
+  console.log(
+    'Nursing office has href:',
+    Boolean(
+      nursingHref
+    )
+  );
+
+
+  console.log(
+    'Nursing office has onclick:',
+    Boolean(
+      nursingOnclick
+    )
+  );
+
 
 
   console.log(
