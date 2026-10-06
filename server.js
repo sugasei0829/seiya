@@ -671,18 +671,210 @@ async function selectCandidate(
    Open output selection page
 ========================================================= */
 
-async function openOutputSelectionPage(p) {
+/* =========================================================
+   Kaipoke navigation helpers
+========================================================= */
+
+function safeUrlInfo(rawUrl = '') {
+
+  try {
+
+    const u =
+      new URL(rawUrl);
+
+    return {
+
+      host:
+        u.hostname,
+
+      path:
+        u.pathname,
+
+      hasConversationContext:
+        u.searchParams.has(
+          'conversationContext'
+        )
+
+    };
+
+  } catch {
+
+    return {
+
+      host:
+        '',
+
+      path:
+        '',
+
+      hasConversationContext:
+        false
+
+    };
+  }
+}
+
+
+async function logCurrentPage(
+  p,
+  label
+) {
+
+  const info =
+    safeUrlInfo(
+      p.url()
+    );
 
   console.log(
-    '=== OPEN OUTPUT SELECTION START ==='
+    `${label} HOST:`,
+    info.host
+  );
+
+  console.log(
+    `${label} PATH:`,
+    info.path
+  );
+
+  console.log(
+    `${label} HAS CONTEXT:`,
+    info.hasConversationContext
+  );
+
+  console.log(
+    `${label} TITLE:`,
+    await getSafeTitle(p)
+  );
+}
+
+
+/*
+ * リンクをクリックして
+ * 画面遷移を待つ
+ */
+async function clickAndWait(
+  p,
+  locator,
+  waitMs = 1500
+) {
+
+  const beforeUrl =
+    p.url();
+
+  await locator.click();
+
+  await p
+    .waitForLoadState(
+      'domcontentloaded',
+      {
+        timeout:
+          30000
+      }
+    )
+    .catch(
+      () => {}
+    );
+
+  /*
+   * JavaScript遷移などもあるため
+   * 少し待つ
+   */
+  await p.waitForTimeout(
+    waitMs
+  );
+
+  console.log(
+    'Page changed:',
+    beforeUrl !== p.url()
+  );
+}
+
+
+/* =========================================================
+   Open Kaipoke service selection page
+========================================================= */
+
+async function openServiceSelectionPage(p) {
+
+  console.log(
+    '=== OPEN SERVICE SELECTION START ==='
   );
 
 
   /*
-   * 直接アクセス
+   * ログイン状態を確認
    */
+  await autoLogin(p);
+
+
+  /*
+   * すでに訪問看護画面にいる場合
+   *
+   * スクショでは訪問看護画面のURLに
+   * /bizhnc/ が含まれている。
+   */
+  if (
+    /\/bizhnc\//i.test(
+      p.url()
+    )
+  ) {
+
+    console.log(
+      'Already inside visiting nursing service'
+    );
+
+    await logCurrentPage(
+      p,
+      'NURSING'
+    );
+
+    return;
+  }
+
+
+  /*
+   * すでに出力対象選択または
+   * 看護記録書Ⅱ出力画面にいる場合は、
+   * 正しい訪問看護コンテキストか後で確認する。
+   */
+  if (
+    isOutputSelectionUrl(
+      p.url()
+    ) ||
+    isExportUrl(
+      p.url()
+    )
+  ) {
+
+    const body =
+      await getBodyText(p);
+
+    if (
+      body.includes(
+        '看護記録書Ⅱ'
+      )
+    ) {
+
+      console.log(
+        'Already inside correct visiting nursing context'
+      );
+
+      return;
+    }
+  }
+
+
+  /*
+   * biztopへ戻る
+   *
+   * ここでは出力対象選択へ直接飛ばない。
+   */
+  console.log(
+    'Opening Kaipoke top...'
+  );
+
+
   await p.goto(
-    OUTPUT_SELECTION_URL,
+    'https://r.kaipoke.biz/biztop/',
     {
       waitUntil:
         'domcontentloaded',
@@ -699,36 +891,20 @@ async function openOutputSelectionPage(p) {
   );
 
 
-  console.log(
-    'OUTPUT SELECTION URL:',
-    p.url()
-  );
-
-  console.log(
-    'OUTPUT SELECTION TITLE:',
-    await getSafeTitle(p)
-  );
-
-
   /*
-   * ログイン画面へ戻った場合
+   * セッション切れ確認
    */
   if (!(await isLoggedIn(p))) {
 
     console.log(
-      'Session lost. Logging in again...'
+      'Session expired while opening biztop'
     );
-
 
     await autoLogin(p);
 
 
-    /*
-     * ログイン後もう一度
-     * 出力対象選択を開く
-     */
     await p.goto(
-      OUTPUT_SELECTION_URL,
+      'https://r.kaipoke.biz/biztop/',
       {
         waitUntil:
           'domcontentloaded',
@@ -746,117 +922,868 @@ async function openOutputSelectionPage(p) {
   }
 
 
+  await logCurrentPage(
+    p,
+    'BIZTOP'
+  );
+
+
+  /*
+   * スクショで確認した実際の動線：
+   *
+   * biztop
+   * ↓
+   * レセプト
+   * ↓
+   * 事業所一覧
+   *
+   * 状況によっては既に
+   * 事業所一覧画面へ入っていることもある。
+   */
+
+
+  /*
+   * まず現在の画面に
+   * 「訪問看護」の事業所リンクがあるか探す
+   */
+  let nursingOfficeLink =
+    p.locator(
+      'a'
+    ).filter({
+      hasText:
+        '訪問看護'
+    });
+
+
+  let nursingCount =
+    await nursingOfficeLink.count();
+
+
+  console.log(
+    'Visiting nursing link count on current page:',
+    nursingCount
+  );
+
+
+  /*
+   * biztopに事業所リンクがない場合、
+   * レセプトへ入る
+   */
+  if (nursingCount < 1) {
+
+    console.log(
+      'Visiting nursing office not found on biztop. Searching レセプト...'
+    );
+
+
+    const receiptCandidates = [
+
+      p.getByRole(
+        'link',
+        {
+          name:
+            /レセプト/
+        }
+      ),
+
+      p.locator(
+        'a'
+      ).filter({
+        hasText:
+          'レセプト'
+      }),
+
+      p.getByText(
+        'レセプト',
+        {
+          exact:
+            true
+        }
+      )
+
+    ];
+
+
+    let receiptLink =
+      null;
+
+
+    for (
+      const candidate
+      of receiptCandidates
+    ) {
+
+      const count =
+        await candidate
+          .count()
+          .catch(
+            () => 0
+          );
+
+
+      if (count < 1) {
+        continue;
+      }
+
+
+      for (
+        let i = 0;
+        i < count;
+        i++
+      ) {
+
+        const item =
+          candidate.nth(i);
+
+
+        const visible =
+          await item
+            .isVisible()
+            .catch(
+              () => false
+            );
+
+
+        if (!visible) {
+          continue;
+        }
+
+
+        receiptLink =
+          item;
+
+        break;
+      }
+
+
+      if (receiptLink) {
+        break;
+      }
+    }
+
+
+    if (!receiptLink) {
+
+      throw new Error(
+        'カイポケTOPから「レセプト」を検出できませんでした。'
+      );
+    }
+
+
+    console.log(
+      'Clicking レセプト...'
+    );
+
+
+    await clickAndWait(
+      p,
+      receiptLink,
+      1800
+    );
+
+
+    await logCurrentPage(
+      p,
+      'AFTER RECEIPT'
+    );
+
+
+    /*
+     * レセプト画面に入った後、
+     * 訪問看護事業所を探す
+     */
+    nursingOfficeLink =
+      p.locator(
+        'a'
+      ).filter({
+        hasText:
+          '訪問看護'
+      });
+
+
+    nursingCount =
+      await nursingOfficeLink.count();
+
+
+    console.log(
+      'Visiting nursing link count after receipt:',
+      nursingCount
+    );
+  }
+
+
+  /*
+   * 訪問看護事業所が見つからない
+   */
+  if (nursingCount < 1) {
+
+    throw new Error(
+      '訪問看護の事業所リンクを検出できませんでした。'
+    );
+  }
+
+
+  /*
+   * 「訪問看護」という文字を含むリンクが
+   * 複数ある可能性がある。
+   *
+   * hrefに訪問看護システムらしいURLが
+   * 入っているものを優先する。
+   */
+  let selectedOfficeLink =
+    null;
+
+
+  for (
+    let i = 0;
+    i < nursingCount;
+    i++
+  ) {
+
+    const candidate =
+      nursingOfficeLink.nth(i);
+
+
+    const visible =
+      await candidate
+        .isVisible()
+        .catch(
+          () => false
+        );
+
+
+    if (!visible) {
+      continue;
+    }
+
+
+    const href =
+      await candidate
+        .getAttribute(
+          'href'
+        )
+        .catch(
+          () => ''
+        );
+
+
+    if (
+      href &&
+      (
+        href.includes(
+          'bizhnc'
+        ) ||
+        href.includes(
+          'conversationContext'
+        ) ||
+        href.includes(
+          'COM020101'
+        )
+      )
+    ) {
+
+      selectedOfficeLink =
+        candidate;
+
+      break;
+    }
+  }
+
+
+  /*
+   * 条件一致がなければ
+   * 最初の表示中リンク
+   */
+  if (!selectedOfficeLink) {
+
+    for (
+      let i = 0;
+      i < nursingCount;
+      i++
+    ) {
+
+      const candidate =
+        nursingOfficeLink.nth(i);
+
+
+      if (
+        await candidate
+          .isVisible()
+          .catch(
+            () => false
+          )
+      ) {
+
+        selectedOfficeLink =
+          candidate;
+
+        break;
+      }
+    }
+  }
+
+
+  if (!selectedOfficeLink) {
+
+    throw new Error(
+      'クリック可能な訪問看護事業所を検出できませんでした。'
+    );
+  }
+
+
+  /*
+   * URLの中身はログへ出さない。
+   *
+   * conversationContextや
+   * 事業所IDなどを漏らさないため。
+   */
+  const selectedHref =
+    await selectedOfficeLink
+      .getAttribute(
+        'href'
+      )
+      .catch(
+        () => ''
+      );
+
+
+  const selectedInfo =
+    safeUrlInfo(
+      selectedHref
+    );
+
+
+  console.log(
+    'Selected visiting nursing link path:',
+    selectedInfo.path
+  );
+
+  console.log(
+    'Selected link has context:',
+    selectedInfo.hasConversationContext
+  );
+
+
+  console.log(
+    'Clicking visiting nursing office...'
+  );
+
+
+  await clickAndWait(
+    p,
+    selectedOfficeLink,
+    2000
+  );
+
+
+  await logCurrentPage(
+    p,
+    'AFTER NURSING OFFICE'
+  );
+
+
+  /*
+   * スクショで確認した訪問看護画面には
+   *
+   * 台帳管理
+   * 個別帳票
+   * スケジュール管理
+   * 各種情報出力
+   *
+   * が表示される。
+   */
+  const body =
+    await getBodyText(p);
+
+
+  const looksLikeNursingPage =
+    /\/bizhnc\//i.test(
+      p.url()
+    ) ||
+
+    (
+      body.includes(
+        '各種情報出力'
+      ) &&
+      body.includes(
+        'スケジュール管理'
+      )
+    );
+
+
+  if (!looksLikeNursingPage) {
+
+    throw new Error(
+      '訪問看護事業所を選択しましたが、訪問看護画面へ移動できませんでした。'
+    );
+  }
+
+
+  console.log(
+    '=== OPEN SERVICE SELECTION SUCCESS ==='
+  );
+}
+
+
+/* =========================================================
+   Open output selection page
+========================================================= */
+
+async function openOutputSelectionPage(p) {
+
+  console.log(
+    '=== OPEN OUTPUT SELECTION START ==='
+  );
+
+
+  /*
+   * まず訪問看護の事業所コンテキストを作る。
+   *
+   * ここが今回の重要な修正点。
+   */
+  await openServiceSelectionPage(
+    p
+  );
+
+
+  /*
+   * すでに正しい出力対象選択画面なら
+   * そのまま利用する。
+   */
+  if (
+    isOutputSelectionUrl(
+      p.url()
+    )
+  ) {
+
+    const currentBody =
+      await getBodyText(p);
+
+
+    if (
+      currentBody.includes(
+        '看護記録書Ⅱ'
+      )
+    ) {
+
+      console.log(
+        'Already on correct output selection page'
+      );
+
+      return;
+    }
+  }
+
+
+  /*
+   * 「各種情報出力」を探す。
+   *
+   * スクショでは上部ナビゲーションに存在。
+   */
+  console.log(
+    'Searching 各種情報出力...'
+  );
+
+
+  const outputMenuCandidates = [
+
+    p.getByText(
+      '各種情報出力',
+      {
+        exact:
+          true
+      }
+    ),
+
+    p.locator(
+      'a'
+    ).filter({
+      hasText:
+        '各種情報出力'
+    })
+
+  ];
+
+
+  let outputMenu =
+    null;
+
+
+  for (
+    const candidate
+    of outputMenuCandidates
+  ) {
+
+    const count =
+      await candidate
+        .count()
+        .catch(
+          () => 0
+        );
+
+
+    if (count < 1) {
+      continue;
+    }
+
+
+    for (
+      let i = 0;
+      i < count;
+      i++
+    ) {
+
+      const item =
+        candidate.nth(i);
+
+
+      if (
+        await item
+          .isVisible()
+          .catch(
+            () => false
+          )
+      ) {
+
+        outputMenu =
+          item;
+
+        break;
+      }
+    }
+
+
+    if (outputMenu) {
+      break;
+    }
+  }
+
+
+  if (!outputMenu) {
+
+    throw new Error(
+      '訪問看護画面の「各種情報出力」を検出できませんでした。'
+    );
+  }
+
+
+  /*
+   * スクショでは
+   * 各種情報出力にマウスを乗せると
+   * 「出力対象選択」が表示される。
+   */
+  console.log(
+    'Hovering 各種情報出力...'
+  );
+
+
+  await outputMenu.hover();
+
+
+  await p.waitForTimeout(
+    700
+  );
+
+
+  /*
+   * 出力対象選択を探す
+   */
+  const selectionCandidates = [
+
+    p.getByText(
+      '出力対象選択',
+      {
+        exact:
+          true
+      }
+    ),
+
+    p.locator(
+      'a'
+    ).filter({
+      hasText:
+        '出力対象選択'
+    })
+
+  ];
+
+
+  let selectionLink =
+    null;
+
+
+  for (
+    const candidate
+    of selectionCandidates
+  ) {
+
+    const count =
+      await candidate
+        .count()
+        .catch(
+          () => 0
+        );
+
+
+    if (count < 1) {
+      continue;
+    }
+
+
+    for (
+      let i = 0;
+      i < count;
+      i++
+    ) {
+
+      const item =
+        candidate.nth(i);
+
+
+      if (
+        await item
+          .isVisible()
+          .catch(
+            () => false
+          )
+      ) {
+
+        selectionLink =
+          item;
+
+        break;
+      }
+    }
+
+
+    if (selectionLink) {
+      break;
+    }
+  }
+
+
+  /*
+   * hoverで出ない場合、
+   * 各種情報出力自体をクリックして
+   * 再検索する。
+   */
+  if (!selectionLink) {
+
+    console.log(
+      'Output submenu not visible after hover. Trying click...'
+    );
+
+
+    await outputMenu.click();
+
+
+    await p.waitForTimeout(
+      700
+    );
+
+
+    const retry =
+      p.getByText(
+        '出力対象選択',
+        {
+          exact:
+            true
+        }
+      );
+
+
+    const retryCount =
+      await retry
+        .count()
+        .catch(
+          () => 0
+        );
+
+
+    for (
+      let i = 0;
+      i < retryCount;
+      i++
+    ) {
+
+      const item =
+        retry.nth(i);
+
+
+      if (
+        await item
+          .isVisible()
+          .catch(
+            () => false
+          )
+      ) {
+
+        selectionLink =
+          item;
+
+        break;
+      }
+    }
+  }
+
+
+  if (!selectionLink) {
+
+    throw new Error(
+      '「各種情報出力」メニュー内の「出力対象選択」を検出できませんでした。'
+    );
+  }
+
+
+  /*
+   * 出力対象選択リンクに
+   * conversationContextが含まれているかだけ確認。
+   *
+   * 値自体はログへ出さない。
+   */
+  const href =
+    await selectionLink
+      .getAttribute(
+        'href'
+      )
+      .catch(
+        () => ''
+      );
+
+
+  const hrefInfo =
+    safeUrlInfo(
+      href
+    );
+
+
+  console.log(
+    'Output selection link path:',
+    hrefInfo.path
+  );
+
+  console.log(
+    'Output selection link has context:',
+    hrefInfo.hasConversationContext
+  );
+
+
+  /*
+   * 人間と同じようにクリックする。
+   *
+   * OUTPUT_SELECTION_URLへの
+   * 直接gotoはしない。
+   */
+  console.log(
+    'Clicking 出力対象選択...'
+  );
+
+
+  await clickAndWait(
+    p,
+    selectionLink,
+    1800
+  );
+
+
+  await logCurrentPage(
+    p,
+    'OUTPUT SELECTION'
+  );
+
+
+  /*
+   * 正しいページか確認
+   */
   const body =
     await getBodyText(p);
 
 
   console.log(
-    'OUTPUT PAGE contains 看護記録書Ⅱ:',
+    'Contains 個別帳票データ:',
+    body.includes(
+      '個別帳票データ'
+    )
+  );
+
+
+  console.log(
+    'Contains 看護記録書Ⅱ:',
     body.includes(
       '看護記録書Ⅱ'
     )
   );
 
-   console.log(
-  'FRAME COUNT:',
-  p.frames().length
-);
 
-for (
-  let i = 0;
-  i < p.frames().length;
-  i++
-) {
-
-  const frame =
-    p.frames()[i];
-
-  console.log(
-    `FRAME ${i} URL:`,
-    frame.url()
-  );
-
-  const frameText =
-    await frame
-      .locator('body')
-      .innerText()
-      .catch(() => '');
-
-  console.log(
-    `FRAME ${i} HAS RECORD2:`,
-    frameText.includes('看護記録書Ⅱ')
-  );
-
-  console.log(
-    `FRAME ${i} TEXT PREVIEW:`,
-    frameText
-      .replace(/\s+/g, ' ')
-      .slice(0, 1000)
-  );
-}
-
-  /*
-   * ページ内リンクをデバッグ表示
-   *
-   * 患者データなどは出力しない。
-   */
-  const links =
-    await p
-      .locator('a')
-      .evaluateAll(
-        elements =>
-          elements
-            .map(el => ({
-              text:
-                (el.innerText || '')
-                  .trim(),
-
-              href:
-                el.getAttribute('href') || ''
-            }))
-            .filter(
-              item =>
-                item.text.includes(
-                  '看護記録'
-                )
-            )
-            .slice(0, 20)
-      )
-      .catch(
-        () => []
-      );
-
-
-  console.log(
-    'NURSING RECORD LINKS:',
-    JSON.stringify(
-      links
-    )
-  );
-
-
-  /*
-   * 看護記録書Ⅱがない場合
-   */
   if (
     !body.includes(
       '看護記録書Ⅱ'
     )
   ) {
 
-    console.error(
-      'CURRENT URL:',
-      p.url()
-    );
+    /*
+     * デバッグ用。
+     *
+     * 患者情報やURLパラメータは
+     * ログに出さない。
+     */
+    const nursingLinks =
+      await p
+        .locator(
+          'a'
+        )
+        .evaluateAll(
+          elements =>
+            elements
+              .map(
+                el => ({
+                  text:
+                    (
+                      el.innerText ||
+                      ''
+                    ).trim(),
 
-    console.error(
-      'CURRENT TITLE:',
-      await getSafeTitle(p)
+                  path:
+                    (() => {
+
+                      try {
+
+                        return new URL(
+                          el.href
+                        ).pathname;
+
+                      } catch {
+
+                        return '';
+                      }
+
+                    })()
+                })
+              )
+              .filter(
+                item =>
+                  item.text.includes(
+                    '看護記録'
+                  )
+              )
+              .slice(
+                0,
+                10
+              )
+        )
+        .catch(
+          () => []
+        );
+
+
+    console.log(
+      'NURSING RECORD LINK COUNT:',
+      nursingLinks.length
     );
 
 
     throw new Error(
-      '出力対象選択画面に「看護記録書Ⅱ」がありませんでした。'
+      '訪問看護の事業所を選択して出力対象選択へ進みましたが、「看護記録書Ⅱ」が表示されませんでした。'
     );
   }
 
@@ -865,7 +1792,6 @@ for (
     '=== OPEN OUTPUT SELECTION SUCCESS ==='
   );
 }
-
 
 /* =========================================================
    Click 看護記録書Ⅱ
@@ -1049,10 +1975,14 @@ async function openExportPage(p) {
   await autoLogin(p);
 
 
-  /*
-   * 2. 出力対象選択を直接開く
-   */
-  await openOutputSelectionPage(p);
+/*
+ * 2. 訪問看護事業所を選択
+ *    ↓
+ *    各種情報出力
+ *    ↓
+ *    出力対象選択
+ */
+await openOutputSelectionPage(p);
 
 
   /*
