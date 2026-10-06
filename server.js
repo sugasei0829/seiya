@@ -2005,7 +2005,6 @@ async function openOutputSelectionPage(p) {
 /* =========================================================
    Click 看護記録書Ⅱ
 ========================================================= */
-
 async function clickRecord2(p) {
 
   console.log(
@@ -2014,47 +2013,130 @@ async function clickRecord2(p) {
 
 
   /*
-   * まずaタグを優先
+   * ページ内には
+   * 非表示メニュー側と
+   * 実際の個別帳票データ側の
+   * 「看護記録書Ⅱ」が存在する。
+   *
+   * 必ず visible のものを選択する。
    */
-  let recordLink =
+  const candidates =
     p.locator(
-      'a',
-      {
-        hasText:
-          '看護記録書Ⅱ'
-      }
-    ).first();
+      'a'
+    ).filter({
+      hasText:
+        '看護記録書Ⅱ'
+    });
+
+
+  const count =
+    await candidates.count();
+
+
+  console.log(
+    '看護記録書Ⅱ candidate count:',
+    count
+  );
+
+
+  let recordLink =
+    null;
+
+
+  for (
+    let i = 0;
+    i < count;
+    i++
+  ) {
+
+    const candidate =
+      candidates.nth(i);
+
+
+    const visible =
+      await candidate
+        .isVisible()
+        .catch(
+          () => false
+        );
+
+
+    console.log(
+      `看護記録書Ⅱ candidate ${i + 1} visible:`,
+      visible
+    );
+
+
+    if (!visible) {
+      continue;
+    }
+
+
+    recordLink =
+      candidate;
+
+    break;
+  }
 
 
   /*
-   * 見つからない場合は
-   * テキスト全体から探す
+   * aタグで見つからなかった場合
    */
-  if (
-    await recordLink.count() < 1
-  ) {
+  if (!recordLink) {
 
-    recordLink =
+    const textCandidates =
       p.getByText(
         '看護記録書Ⅱ',
         {
           exact:
             true
         }
-      ).first();
+      );
+
+
+    const textCount =
+      await textCandidates.count();
+
+
+    for (
+      let i = 0;
+      i < textCount;
+      i++
+    ) {
+
+      const candidate =
+        textCandidates.nth(i);
+
+
+      if (
+        await candidate
+          .isVisible()
+          .catch(
+            () => false
+          )
+      ) {
+
+        recordLink =
+          candidate;
+
+        break;
+      }
+    }
   }
 
 
-  if (
-    await recordLink.count() < 1
-  ) {
+  if (!recordLink) {
 
     throw new Error(
-      '「看護記録書Ⅱ」のリンクを検出できませんでした。'
+      '表示中の「看護記録書Ⅱ」リンクを検出できませんでした。'
     );
   }
 
 
+  /*
+   * href / onclick の有無だけ確認。
+   * 中身はログに出さない。
+   */
   const href =
     await recordLink
       .getAttribute(
@@ -2065,28 +2147,58 @@ async function clickRecord2(p) {
       );
 
 
+  const onclick =
+    await recordLink
+      .getAttribute(
+        'onclick'
+      )
+      .catch(
+        () => null
+      );
+
+
   console.log(
-    '看護記録書Ⅱ link href exists:',
+    'Visible 看護記録書Ⅱ has href:',
     Boolean(href)
   );
 
 
+  console.log(
+    'Visible 看護記録書Ⅱ has onclick:',
+    Boolean(onclick)
+  );
+
+
   /*
-   * クリック
+   * 実際にクリック
    */
-  await recordLink.click();
+  console.log(
+    'Clicking visible 看護記録書Ⅱ...'
+  );
 
 
-  await waitPage(
+  await clickAndWait(
     p,
-    1800
+    recordLink,
+    2000
   );
 
 
   console.log(
-    'AFTER RECORD2 CLICK URL:',
-    p.url()
+    'AFTER RECORD2 CLICK PATH:',
+    safeUrlInfo(
+      p.url()
+    ).path
   );
+
+
+  console.log(
+    'AFTER RECORD2 CLICK HAS CONTEXT:',
+    safeUrlInfo(
+      p.url()
+    ).hasConversationContext
+  );
+
 
   console.log(
     'AFTER RECORD2 CLICK TITLE:',
@@ -2099,45 +2211,39 @@ async function clickRecord2(p) {
 
 
   /*
-   * 出力条件画面確認
+   * 出力条件設定画面確認
    */
   const looksLikeExportPage =
+
     isExportUrl(
       p.url()
-    ) ||
+    )
+
+    ||
 
     (
       body.includes(
         '看護記録書Ⅱ'
-      ) &&
+      )
 
-      (
-        body.includes(
-          '出力条件'
-        ) ||
+      &&
 
-        body.includes(
-          'CSV出力'
-        )
+      body.includes(
+        'CSV出力'
       )
     );
 
 
+  console.log(
+    'Export page detected:',
+    looksLikeExportPage
+  );
+
+
   if (!looksLikeExportPage) {
 
-    console.error(
-      'CURRENT URL:',
-      p.url()
-    );
-
-    console.error(
-      'CURRENT TITLE:',
-      await getSafeTitle(p)
-    );
-
-
     throw new Error(
-      '看護記録書Ⅱをクリックしましたが、出力条件画面へ移動できませんでした。'
+      '「看護記録書Ⅱ」をクリックしましたが、出力条件設定画面へ移動できませんでした。'
     );
   }
 
@@ -2146,65 +2252,6 @@ async function clickRecord2(p) {
     '=== CLICK 看護記録書Ⅱ SUCCESS ==='
   );
 }
-
-
-/* =========================================================
-   Open 看護記録書Ⅱ export page
-========================================================= */
-
-async function openExportPage(p) {
-
-  console.log(
-    '=== OPEN EXPORT PAGE START ==='
-  );
-
-
-  console.log(
-    'START URL:',
-    p.url()
-  );
-
-
-  /*
-   * すでに出力条件画面なら終了
-   */
-  if (isExportUrl(p.url())) {
-
-    console.log(
-      'Already on export page'
-    );
-
-    return;
-  }
-
-
-  /*
-   * 1. ログイン
-   */
-  await autoLogin(p);
-
-
-/*
- * 2. 訪問看護事業所を選択
- *    ↓
- *    各種情報出力
- *    ↓
- *    出力対象選択
- */
-await openOutputSelectionPage(p);
-
-
-  /*
-   * 3. 看護記録書Ⅱをクリック
-   */
-  await clickRecord2(p);
-
-
-  console.log(
-    '=== OPEN EXPORT PAGE SUCCESS ==='
-  );
-}
-
 
 /* =========================================================
    Set export dates
