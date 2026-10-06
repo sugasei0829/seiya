@@ -1139,11 +1139,11 @@ async function openServiceSelectionPage(p) {
   );
 
 
-  await clickAndWait(
-    p,
-    receiptLink,
-    2000
-  );
+await clickAndWait(
+  p,
+  receiptLink,
+  3000
+);
 
 
   await logCurrentPage(
