@@ -751,6 +751,7 @@ async function logCurrentPage(
  * リンクをクリックして
  * 画面遷移を待つ
  */
+
 async function clickAndWait(
   p,
   locator,
@@ -762,6 +763,9 @@ async function clickAndWait(
 
   await locator.click();
 
+  /*
+   * 通常のページ遷移を待つ
+   */
   await p
     .waitForLoadState(
       'domcontentloaded',
@@ -770,24 +774,76 @@ async function clickAndWait(
           30000
       }
     )
-    .catch(
-      () => {}
-    );
+    .catch(() => {});
+
 
   /*
-   * JavaScript遷移などもあるため
-   * 少し待つ
+   * カイポケはSSO中継ページを通ることがある。
+   *
+   * Loading...
+   * /common/sso.do
+   *
+   * 等が終わるまで待つ。
+   */
+  const startedAt =
+    Date.now();
+
+  while (
+    Date.now() - startedAt <
+    15000
+  ) {
+
+    const currentUrl =
+      p.url();
+
+    const currentTitle =
+      await getSafeTitle(p);
+
+    const body =
+      await getBodyText(p);
+
+
+    const loadingSso =
+      /\/common\/sso\.do/i.test(
+        currentUrl
+      ) ||
+
+      /^Loading/i.test(
+        currentTitle
+      ) ||
+
+      body.trim() === '';
+
+
+    if (!loadingSso) {
+      break;
+    }
+
+
+    console.log(
+      'Waiting for Kaipoke SSO...'
+    );
+
+
+    await p.waitForTimeout(
+      500
+    );
+  }
+
+
+  /*
+   * SSO後のJavaScript描画待ち
    */
   await p.waitForTimeout(
     waitMs
   );
+
 
   console.log(
     'Page changed:',
     beforeUrl !== p.url()
   );
 }
-
 
 /* =========================================================
    Open Kaipoke service selection page
