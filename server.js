@@ -489,86 +489,82 @@ async function clickAndWait(
    Login state
 ========================================================= */
 
-async function isLoggedIn(
-  p
-) {
+async function isLoggedIn(p) {
 
-  const url =
-    p.url();
+  const url = p.url();
 
-
-  if (
-    !isKaipoke(
-      url
-    )
-  ) {
-
+  /*
+   * Kaipoke以外
+   */
+  if (!isKaipoke(url)) {
     return false;
   }
 
+  /*
+   * ログイン画面
+   */
+  if (isLoginUrl(url)) {
+    return false;
+  }
 
+  /*
+   * 非会員・セッション切れ・エラー画面
+   *
+   * 今回ここが重要
+   */
   if (
-    isLoginUrl(
-      url
-    )
+    /\/nonmember\//i.test(url) ||
+    /\/error\.html/i.test(url)
   ) {
+
+    console.log(
+      'Kaipoke session is invalid (nonmember/error page)'
+    );
 
     return false;
   }
 
 
   const text =
-    await getBodyText(
-      p
-    );
+    await getBodyText(p);
 
 
+  /*
+   * ログインフォームが表示されている
+   */
   const looksLikeLoginPage =
 
-    text.includes(
-      '法人ID'
-    )
-
-    &&
-
-    text.includes(
-      'ユーザーID'
-    )
-
-    &&
-
-    text.includes(
-      'パスワード'
-    )
-
-    &&
-
-    text.includes(
-      'ログイン'
-    );
+    text.includes('法人ID') &&
+    text.includes('ユーザーID') &&
+    text.includes('パスワード') &&
+    text.includes('ログイン');
 
 
-  if (
-    looksLikeLoginPage
-  ) {
-
+  if (looksLikeLoginPage) {
     return false;
   }
 
 
+  /*
+   * 明確にログイン後と判断できるもの
+   */
   if (
-    text.includes(
-      'ログアウト'
-    )
+    text.includes('ログアウト') ||
+    text.includes('共通メニュー') ||
+    text.includes('各種情報出力') ||
+    /\/bizhnc\//i.test(url)
   ) {
 
     return true;
   }
 
 
-  return true;
+  /*
+   * 判断できない画面を
+   * 「ログイン済み」にしない
+   */
+  return false;
 }
-
 
 /* =========================================================
    Kaipoke login
